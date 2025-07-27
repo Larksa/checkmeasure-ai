@@ -135,4 +135,4 @@ dmypy.json
 
 # Local development
 prepare-deployment.sh
-deployment-checklist.md
+deployment-checklist.mdvenv/

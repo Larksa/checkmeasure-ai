@@ -33,6 +33,14 @@ except Exception as e:
     CLAUDE_VISION_AVAILABLE = False
     log_error(e, "pdf_processing.imports", {"module": "claude_vision_analyzer"})
 
+try:
+    from pdf_processing.hybrid_analyzer import HybridPDFAnalyzer
+    HYBRID_ANALYZER_AVAILABLE = True
+    log_info("Hybrid PDF analyzer imported successfully", "pdf_processing.imports")
+except Exception as e:
+    HYBRID_ANALYZER_AVAILABLE = False
+    log_error(e, "pdf_processing.imports", {"module": "hybrid_analyzer"})
+
 router = APIRouter()
 
 class PDFAnalysisResult(BaseModel):
@@ -1183,6 +1191,104 @@ async def get_last_detection_details():
         "detection_details": _last_detection_details,
         "timestamp": _last_detection_details.get("timestamp", "unknown")
     }
+
+@router.post("/analyze-with-assumptions")
+async def analyze_pdf_with_assumptions(
+    file: UploadFile = File(...),
+    override_scale: Optional[str] = Form(None)
+):
+    """
+    Analyze PDF using hybrid approach with assumptions display
+    """
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="File must be a PDF")
+    
+    if not HYBRID_ANALYZER_AVAILABLE:
+        raise HTTPException(
+            status_code=503, 
+            detail="Hybrid analyzer is not available. Check dependencies."
+        )
+    
+    try:
+        import tempfile
+        import os
+        
+        # Save uploaded file temporarily
+        content = await file.read()
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+            tmp_file.write(content)
+            tmp_path = tmp_file.name
+        
+        try:
+            # Use hybrid analyzer
+            analyzer = HybridPDFAnalyzer()
+            results = analyzer.analyze_pdf(tmp_path)
+            
+            # Override scale if provided
+            if override_scale:
+                # Update scale in results
+                scale_parts = override_scale.split(':')
+                if len(scale_parts) == 2 and scale_parts[0] == '1':
+                    scale_factor = float(scale_parts[1])
+                    results['scale'].scale_ratio = override_scale
+                    results['scale'].scale_factor = scale_factor
+                    results['scale'].method = 'manual'
+                    results['scale'].confidence = 100.0
+                    
+                    # Update scale assumption
+                    for assumption in results['assumptions']:
+                        if assumption.id == 'scale-1':
+                            assumption.value = override_scale
+                            assumption.source = 'manual'
+                            assumption.confidence = 100.0
+            
+            # Convert dataclasses to dicts for JSON response
+            return {
+                'scale': {
+                    'scale_ratio': results['scale'].scale_ratio,
+                    'scale_factor': results['scale'].scale_factor,
+                    'confidence': results['scale'].confidence,
+                    'method': results['scale'].method,
+                    'source_text': results['scale'].source_text,
+                    'page_number': results['scale'].page_number
+                },
+                'joists': [
+                    {
+                        'label': j.label,
+                        'joist_type': j.joist_type,
+                        'sublabel': j.sublabel,
+                        'dimensions': j.dimensions,
+                        'material': j.material,
+                        'location': j.location,
+                        'confidence': j.confidence
+                    }
+                    for j in results['joists']
+                ],
+                'assumptions': [
+                    {
+                        'id': a.id,
+                        'category': a.category,
+                        'description': a.description,
+                        'value': a.value,
+                        'confidence': a.confidence,
+                        'source': a.source,
+                        'editable': a.editable
+                    }
+                    for a in results['assumptions']
+                ]
+            }
+            
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+                
+    except Exception as e:
+        error_id = log_error(e, "pdf_processing.analyze_with_assumptions")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Analysis failed: {str(e)}. Error ID: {error_id}"
+        )
 
 @router.get("/test")
 async def test_pdf_processing():

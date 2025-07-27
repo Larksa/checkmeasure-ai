@@ -29,6 +29,7 @@ import CalculationPanel from './components/CalculationPanel';
 import ResultsDisplay from './components/ResultsDisplay';
 import AgentDashboard from './components/agents/AgentDashboard';
 import AgentControlPanel from './components/agents/AgentControlPanel';
+import ScaleDetectionDemo from './components/ScaleDetectionDemo';
 import { apiClient } from './utils/api';
 
 const { Header, Content, Sider } = Layout;
@@ -36,7 +37,7 @@ const { Title, Text } = Typography;
 const { Dragger } = Upload;
 const { TabPane } = Tabs;
 
-type ViewMode = 'traditional' | 'multi-agent' | 'dashboard' | 'control';
+type ViewMode = 'traditional' | 'multi-agent' | 'dashboard' | 'control' | 'scale-detection';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewMode>('traditional');
@@ -221,6 +222,11 @@ const App: React.FC = () => {
       icon: <ControlOutlined />,
       label: 'Agent Control',
     },
+    {
+      key: 'scale-detection',
+      icon: <ExperimentOutlined />,
+      label: 'Scale Detection (Beta)',
+    },
   ];
 
   const renderTraditionalView = () => (
@@ -365,6 +371,8 @@ const App: React.FC = () => {
         return <AgentDashboard key={dashboardKey} />;
       case 'control':
         return <AgentControlPanel onRefresh={refreshDashboard} />;
+      case 'scale-detection':
+        return <ScaleDetectionDemo />;
       default:
         return renderTraditionalView();
     }

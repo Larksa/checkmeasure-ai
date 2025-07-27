@@ -88,18 +88,25 @@ AI-powered construction material calculation assistant that revolutionizes how A
   - **Status**: In Progress
   - **Notes**: Initial tests show successful API calls
 
-### Phase 3: Advanced Features [0/3 tasks] - scope emerging
-- [ ] 3.1: Implement scale detection and conversion
-  - **Status**: Not Started
-  - **Notes**: Claude Vision analyzer has framework ready
+### Phase 3: Advanced PDF Analysis [1/4 tasks] - scope refined
+- [ ] 3.1: Implement scale detection and display
+  - **Status**: In Progress
+  - **Planned**: 1 week
+  - **History**:
+    - Attempt 1: [2025-07-28] Text-first approach with regex patterns
+  - **Notes**: Hybrid approach - text extraction, then vision fallback
 
-- [ ] 3.2: Add wall framing calculator
+- [ ] 3.2: Build assumptions UI for transparency
   - **Status**: Not Started
-  - **Notes**: Following joist calculator pattern
+  - **Notes**: Show detected scale, confidence, allow overrides
 
-- [ ] 3.3: Build rafter and roof calculations
+- [ ] 3.3: Create J1 joist pattern detection
   - **Status**: Not Started
-  - **Notes**: Complex geometry calculations needed
+  - **Notes**: Detect cross patterns, extract labels J1A-E
+
+- [ ] 3.4: Add measurement extraction pipeline
+  - **Status**: Not Started
+  - **Notes**: Apply scale to convert pixels to real dimensions
 
 ### Discovered Tasks [0/3 tasks]
 - [ ] D.1: Add error recovery for API rate limits
