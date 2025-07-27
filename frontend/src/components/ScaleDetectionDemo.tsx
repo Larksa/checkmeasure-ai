@@ -3,7 +3,7 @@ import { Card, Button, Upload, message, Space, Spin, Typography, Input } from 'a
 import { UploadOutlined, FileSearchOutlined, EditOutlined, CheckOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import AssumptionsDisplay, { Assumption } from './AssumptionsDisplay';
-import { apiClient } from '../utils/api';
+import api from '../utils/api';
 
 const { Title, Text } = Typography;
 
@@ -51,7 +51,7 @@ const ScaleDetectionDemo: React.FC = () => {
         formData.append('override_scale', overrideScale);
       }
 
-      const response = await apiClient.post('/api/pdf/analyze-with-assumptions', formData, {
+      const response = await api.post('/api/pdf/analyze-with-assumptions', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },

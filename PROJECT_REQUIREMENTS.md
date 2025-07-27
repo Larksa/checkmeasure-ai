@@ -108,7 +108,7 @@ AI-powered construction material calculation assistant that revolutionizes how A
   - **Status**: Not Started
   - **Notes**: Apply scale to convert pixels to real dimensions
 
-### Discovered Tasks [0/3 tasks]
+### Discovered Tasks [0/4 tasks]
 - [ ] D.1: Add error recovery for API rate limits
   - **Status**: Not Started
   - **Notes**: Discovered during Claude Vision testing
@@ -120,6 +120,12 @@ AI-powered construction material calculation assistant that revolutionizes how A
 - [ ] D.3: Create batch processing for multiple areas
   - **Status**: Not Started
   - **Notes**: Users often select multiple areas at once
+
+- [ ] D.4: Refactor API client for consistency
+  - **Status**: Not Started
+  - **Notes**: Currently mixing apiClient methods with direct api usage
+  - **Technical Debt**: ScaleDetectionDemo uses api directly instead of apiClient
+  - **Action**: Create consistent API methods for all endpoints in apiClient
 
 ## ❌ Failed Approaches
 
