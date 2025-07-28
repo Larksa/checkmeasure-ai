@@ -1,17 +1,17 @@
 # CheckMeasureAI - Living Requirements
 
 ## 🚦 Current Status
-**Last Updated**: 2025-07-28 06:40 AM
+**Last Updated**: 2025-07-28 11:05 AM
 **Phase**: Building / Testing
 **Blocked By**: Nothing
-**Next Action**: Test Claude Vision integration with real construction PDFs
+**Next Action**: Implement joist cross-pattern detection for J1A-E identification
 
 ## 📊 Progress Overview
-- Total Tasks: 15
-- Completed: 12 (80%)
-- In Progress: 2
-- Discovered: 3 (tasks found during work)
-- Failed Attempts: 1
+- Total Tasks: 16
+- Completed: 14 (87.5%)
+- In Progress: 1
+- Discovered: 5 (tasks found during work)
+- Failed Attempts: 3
 
 ## 🎯 Original Vision
 AI-powered construction material calculation assistant that revolutionizes how Australian structural engineers process architectural drawings. The system should automatically extract measurements from PDFs, calculate material requirements according to AS1684 standards, and generate professional cutting lists that match existing client formats.
@@ -89,16 +89,18 @@ AI-powered construction material calculation assistant that revolutionizes how A
   - **Notes**: Initial tests show successful API calls
 
 ### Phase 3: Advanced PDF Analysis [1/4 tasks] - scope refined
-- [ ] 3.1: Implement scale detection and display
-  - **Status**: In Progress
+- [x] 3.1: Implement scale detection and display
+  - **Status**: Complete
   - **Planned**: 1 week
+  - **Actual**: 2h
   - **History**:
-    - Attempt 1: [2025-07-28] Text-first approach with regex patterns
-  - **Notes**: Hybrid approach - text extraction, then vision fallback
+    - Attempt 1: [2025-07-28] Text-first approach with regex patterns - Success!
+  - **Notes**: Hybrid approach working perfectly - 95% confidence on scale detection
 
-- [ ] 3.2: Build assumptions UI for transparency
-  - **Status**: Not Started
-  - **Notes**: Show detected scale, confidence, allow overrides
+- [x] 3.2: Build assumptions UI for transparency
+  - **Status**: Complete
+  - **Actual**: 1h
+  - **Notes**: Beautiful UI showing scale, material, spacing with confidence levels and edit capability
 
 - [ ] 3.3: Create J1 joist pattern detection
   - **Status**: Not Started
@@ -127,6 +129,11 @@ AI-powered construction material calculation assistant that revolutionizes how A
   - **Technical Debt**: ScaleDetectionDemo uses api directly instead of apiClient
   - **Action**: Create consistent API methods for all endpoints in apiClient
 
+- [ ] D.5: Fix FormData uploads across all components
+  - **Status**: Not Started
+  - **Notes**: Remove explicit Content-Type headers for FormData
+  - **Technical Debt**: CalculationPanel still uses explicit multipart headers
+
 ## ❌ Failed Approaches
 
 ### Direct Package Import
@@ -135,6 +142,20 @@ AI-powered construction material calculation assistant that revolutionizes how A
 - **Why Failed**: Backend crashed due to missing `anthropic` package
 - **Lesson Learned**: Always check requirements.txt for all imports
 - **What to Try Instead**: Install missing packages before running
+
+### FormData with Explicit Content-Type
+- **Date**: 2025-07-28
+- **Time Lost**: 1h
+- **Why Failed**: Setting 'Content-Type': 'multipart/form-data' manually doesn't include boundary parameter
+- **Lesson Learned**: Let axios/fetch auto-set Content-Type for FormData
+- **What to Try Instead**: Remove Content-Type header or set to undefined
+
+### Ant Design File Upload originFileObj
+- **Date**: 2025-07-28
+- **Time Lost**: 0.5h
+- **Why Failed**: Assumed file.originFileObj existed, but beforeUpload gives raw File object
+- **Lesson Learned**: Check actual object structure with console.log before accessing properties
+- **What to Try Instead**: Use the file object directly from beforeUpload
 
 ## 📈 Velocity Tracking
 | Week | Planned | Completed | Discovered | Velocity |

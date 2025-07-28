@@ -46,20 +46,29 @@ const ScaleDetectionDemo: React.FC = () => {
 
     try {
       const formData = new FormData();
-      formData.append('file', file.originFileObj as Blob);
+      console.log('File object:', file);
+      console.log('originFileObj:', file.originFileObj);
+      formData.append('file', file as any as File);
       if (overrideScale) {
         formData.append('override_scale', overrideScale);
       }
+      
+      // Debug FormData contents
+      console.log('FormData entries:');
+      Array.from(formData.entries()).forEach(([key, value]) => {
+        console.log(key, value);
+      });
 
       const response = await api.post('/api/pdf/analyze-with-assumptions', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+          'Content-Type': undefined  // Override default application/json
+        }
       });
 
       setResults(response.data);
       message.success('Analysis complete!');
     } catch (error: any) {
+      console.error('Full error response:', error.response);
       message.error(`Analysis failed: ${error.response?.data?.detail || error.message}`);
     } finally {
       setAnalyzing(false);

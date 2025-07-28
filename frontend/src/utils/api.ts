@@ -40,22 +40,14 @@ export const apiClient = {
   uploadPDF: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post<PDFAnalysisResult>('/api/pdf/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    return api.post<PDFAnalysisResult>('/api/pdf/upload', formData);
   },
   
   extractMeasurements: (file: File, selectionAreas: SelectionArea[]) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('selection_areas', JSON.stringify(selectionAreas));
-    return api.post('/api/pdf/extract', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    return api.post('/api/pdf/extract', formData);
   },
   
   testPDFProcessing: () => api.get('/api/pdf/test'),
@@ -106,6 +98,9 @@ api.interceptors.response.use(
       throw new Error('Server error - please try again later');
     } else if (error.code === 'ECONNABORTED') {
       throw new Error('Request timeout - please try again');
+    } else if (error.response?.status === 422) {
+      // For validation errors, throw the original error to preserve details
+      throw error;
     } else {
       throw new Error(error.response?.data?.detail || 'An error occurred');
     }

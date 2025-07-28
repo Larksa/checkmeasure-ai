@@ -79,6 +79,18 @@
   - **Reusable pattern?**: Yes - documented full pattern
   - **Knowledge bank**: Added complete Claude Vision section
 
+- **Issue**: 422 Error on FormData file uploads with axios
+  - **Time to solve**: 2 hours
+  - **Solution**: Remove explicit Content-Type header, let axios auto-set with boundary
+  - **Reusable pattern?**: Yes - NEVER manually set multipart/form-data header
+  - **Knowledge bank**: Critical axios/FormData pattern
+
+- **Issue**: Ant Design Upload file object structure confusion
+  - **Time to solve**: 0.5 hours
+  - **Solution**: beforeUpload gives raw File, not wrapped object with originFileObj
+  - **Reusable pattern?**: Yes - always console.log object structure first
+  - **Knowledge bank**: Ant Design Upload patterns
+
 ## Patterns Discovered
 
 - **Pattern**: Multi-level API fallback
@@ -109,6 +121,16 @@
   - **Issue**: Mixing sync and async code causes server hang
   - **Fix**: Use async throughout or run sync in thread pool
   - **Time wasted**: 1.5 hours
+
+- **Technology**: Axios with FormData
+  - **Issue**: Setting Content-Type: multipart/form-data breaks uploads (missing boundary)
+  - **Fix**: Remove Content-Type header or set to undefined - let axios handle it
+  - **Time wasted**: 2 hours debugging 422 errors
+
+- **Technology**: Ant Design Upload component
+  - **Issue**: Assumed file.originFileObj exists, but beforeUpload gives raw File
+  - **Fix**: Use file directly, not file.originFileObj
+  - **Time wasted**: 0.5 hours
 
 ## Knowledge Bank Contributions
 
