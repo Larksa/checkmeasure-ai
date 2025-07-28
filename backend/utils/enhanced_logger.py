@@ -264,8 +264,15 @@ def log_request(request_id: str, endpoint: str, method: str, **kwargs):
 def log_response(request_id: str, status_code: int, response_time_ms: float, **kwargs):
     return enhanced_logger.log_response(request_id, status_code, response_time_ms, **kwargs)
 
-def log_error(error: Exception, context: str, **kwargs) -> str:
-    return enhanced_logger.log_error(error, context, **kwargs)
+def log_error(error: Exception, context: str, request_id=None, additional_info=None, **kwargs) -> str:
+    # Handle both calling styles - named parameters or kwargs
+    if kwargs and additional_info:
+        # If both are provided, merge kwargs into additional_info
+        additional_info = {**additional_info, **kwargs}
+    elif kwargs and not additional_info:
+        # If only kwargs provided, use them as additional_info
+        additional_info = kwargs
+    return enhanced_logger.log_error(error, context, request_id, additional_info)
 
 def log_claude_vision(action: str, **kwargs):
     return enhanced_logger.log_claude_vision(action, **kwargs)

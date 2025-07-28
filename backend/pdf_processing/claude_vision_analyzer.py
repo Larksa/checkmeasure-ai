@@ -10,6 +10,7 @@ import anthropic
 import json
 import logging
 from utils.enhanced_logger import enhanced_logger, log_claude_vision, log_processing_step, log_error
+from utils.error_logger import log_info, log_warning
 
 # Load environment variables from .env file
 try:
@@ -75,6 +76,18 @@ class ClaudeJoistDetection:
     measurements: Optional[Dict[str, Any]] = None
     scale_validated: bool = False
     measurement_accuracy_score: Optional[float] = None
+
+@dataclass
+class JoistMeasurement:
+    """Actual joist measurements extracted from structural lines"""
+    pattern_label: str  # e.g., "J1"
+    horizontal_span_m: float  # e.g., 3.386
+    vertical_span_m: Optional[float] = None  # e.g., 4.872
+    joist_count: int = 1  # number of parallel joists detected
+    confidence: float = 0.0
+    measurement_method: str = "structural_lines"  # "structural_lines", "dimension_text", etc.
+    line_details: Optional[Dict[str, Any]] = None  # Additional line information
+    line_coordinates: Optional[Dict[str, Any]] = None  # Pixel coordinates of measured lines
 
 @dataclass 
 class ClaudeVisionResult:
@@ -422,7 +435,7 @@ class ClaudeVisionAnalyzer:
             
         except Exception as e:
             processing_time = (time.time() - start_time) * 1000
-            error_id = log_error(e, "claude_vision_analyzer.analyze_pdf", {
+            error_id = log_error(e, "claude_vision_analyzer.analyze_pdf", **{
                 "pdf_size": len(pdf_content),
                 "processing_time_ms": processing_time
             })
@@ -791,7 +804,7 @@ Return as JSON:
             )
             
         except Exception as e:
-            log_error(e, "claude_vision_analyzer._parse_claude_response_enhanced", {
+            log_error(e, "claude_vision_analyzer._parse_claude_response_enhanced", **{
                 "response_preview": claude_response.get("response_text", "")[:200]
             })
             raise e
@@ -997,7 +1010,7 @@ Look carefully at the drawing and provide your analysis:"""
             )
             
         except Exception as e:
-            log_error(e, "claude_vision_analyzer._parse_claude_response", {
+            log_error(e, "claude_vision_analyzer._parse_claude_response", **{
                 "response_preview": claude_response.get("response_text", "")[:200]
             })
             raise e
@@ -1049,58 +1062,103 @@ Look carefully at the drawing and provide your analysis:"""
         except Exception:
             return None
     
-    def analyze_selected_areas(self, pdf_content: bytes, selection_areas: List[Dict]) -> Dict[str, Any]:
+    def analyze_selected_areas(self, pdf_content: bytes, selection_areas: List[Dict], scale_factor: Optional[float] = None) -> Dict[str, Any]:
         """Analyze specific areas marked by user with Claude Vision"""
         start_time = time.time()
         
         try:
             log_processing_step("area_analysis", "started", 
                               details={"areas_count": len(selection_areas)})
+            log_info(f"Starting area analysis for {len(selection_areas)} areas", "claude_vision.analyze_selected_areas")
             
-            # Convert PDF to images first
-            pdf_images = self._convert_pdf_to_images(pdf_content)
+            # Group areas by page number for efficient processing
+            areas_by_page = {}
+            for area in selection_areas:
+                page_num = area.get('page_number', 0)
+                if page_num not in areas_by_page:
+                    areas_by_page[page_num] = []
+                areas_by_page[page_num].append(area)
+            
+            log_info(f"Areas spread across {len(areas_by_page)} pages", "claude_vision.analyze_selected_areas")
             
             area_results = []
             total_cost = 0.0
             
-            for i, area in enumerate(selection_areas):
-                try:
-                    # Crop the specific area from the PDF image
-                    cropped_image = self._crop_area_from_image(pdf_images, area)
-                    
-                    if cropped_image:
-                        # Analyze this specific area with Claude Vision
-                        area_result = self._analyze_area_with_claude(cropped_image, area)
-                        area_results.append(area_result)
+            # Process pages one at a time
+            for page_num, page_areas in areas_by_page.items():
+                # Convert only this specific page
+                pdf_conversion_start = time.time()
+                log_info(f"Converting page {page_num} to image...", "claude_vision.pdf_conversion")
+                page_image = self._convert_single_page_to_image(pdf_content, page_num)
+                pdf_conversion_time = (time.time() - pdf_conversion_start) * 1000
+                log_info(f"Page {page_num} conversion completed in {pdf_conversion_time:.0f}ms", "claude_vision.pdf_conversion")
+                
+                if not page_image:
+                    log_warning(f"Failed to convert page {page_num}", "claude_vision.pdf_conversion")
+                    continue
+                
+                # Process all areas on this page
+                for i, area in enumerate(page_areas):
+                    try:
+                        area_start_time = time.time()
+                        area_index = selection_areas.index(area)
+                        log_info(f"Processing area {area_index+1}/{len(selection_areas)}: {area.get('calculation_type', 'unknown')}", "claude_vision.area_processing")
                         
-                        if area_result.get("cost_estimate_usd"):
-                            total_cost += area_result["cost_estimate_usd"]
+                        # Crop the specific area from the page image
+                        crop_start = time.time()
+                        cropped_image = self._crop_area_from_single_image(page_image, area)
+                        crop_time = (time.time() - crop_start) * 1000
+                        log_info(f"Area cropping completed in {crop_time:.0f}ms", "claude_vision.area_cropping")
+                        
+                        if cropped_image:
+                            # Analyze this specific area with Claude Vision
+                            claude_start = time.time()
+                            log_info(f"Sending area {area_index+1} to Claude Vision API...", "claude_vision.api_call")
+                            area_result = self._analyze_area_with_claude(cropped_image, area, scale_factor)
+                            claude_time = (time.time() - claude_start) * 1000
+                            log_info(f"Claude Vision API responded in {claude_time:.0f}ms", "claude_vision.api_call")
                             
-                        log_processing_step(f"area_{i}_analysis", "success",
-                                          details={"calculation_type": area.get("calculation_type")})
+                            area_results.append(area_result)
+                            
+                            if area_result.get("cost_estimate_usd"):
+                                total_cost += area_result["cost_estimate_usd"]
+                            
+                            area_total_time = (time.time() - area_start_time) * 1000
+                            log_processing_step(f"area_{area_index}_analysis", "success",
+                                              duration_ms=area_total_time,
+                                              details={"calculation_type": area.get("calculation_type")})
+                        else:
+                            log_warning(f"Failed to crop area {area_index+1}", "claude_vision.area_cropping")
                     
-                except Exception as area_error:
-                    log_error(area_error, f"claude_vision_analyzer.analyze_area_{i}")
-                    area_results.append({
-                        "area_index": i,
-                        "error": str(area_error),
-                        "calculation_type": area.get("calculation_type", "unknown")
-                    })
+                    except Exception as area_error:
+                        area_index = selection_areas.index(area)
+                        log_error(area_error, f"claude_vision_analyzer.analyze_area_{area_index}")
+                        area_results.append({
+                            "area_index": area_index,
+                            "error": str(area_error),
+                            "calculation_type": area.get("calculation_type", "unknown")
+                        })
             
             processing_time = (time.time() - start_time) * 1000
             
             # Combine results into unified response
+            log_info("Combining area results...", "claude_vision.combine_results")
             combined_result = self._combine_area_results(area_results, processing_time, total_cost)
             
             log_processing_step("area_analysis", "completed",
                               duration_ms=processing_time,
-                              details={"successful_areas": len([r for r in area_results if "error" not in r])})
+                              details={
+                                  "successful_areas": len([r for r in area_results if "error" not in r]),
+                                  "pages_processed": len(areas_by_page),
+                                  "total_processing_ms": processing_time
+                              })
+            log_info(f"Area analysis completed in {processing_time:.0f}ms total", "claude_vision.analyze_selected_areas")
             
             return combined_result
             
         except Exception as e:
             processing_time = (time.time() - start_time) * 1000
-            error_id = log_error(e, "claude_vision_analyzer.analyze_selected_areas", {
+            error_id = log_error(e, "claude_vision_analyzer.analyze_selected_areas", **{
                 "areas_count": len(selection_areas),
                 "processing_time_ms": processing_time
             })
@@ -1151,9 +1209,85 @@ Look carefully at the drawing and provide your analysis:"""
             log_error(e, "claude_vision_analyzer._crop_area_from_image")
             return None
     
-    def _analyze_area_with_claude(self, area_image: bytes, area_info: Dict) -> Dict[str, Any]:
+    def _convert_single_page_to_image(self, pdf_content: bytes, page_number: int) -> Optional[bytes]:
+        """Convert a single PDF page to an optimized image for Claude Vision"""
+        try:
+            # Open PDF from bytes
+            pdf_doc = fitz.open(stream=pdf_content, filetype="pdf")
+            
+            # Convert from 1-indexed (frontend) to 0-indexed (PyMuPDF)
+            page_index = page_number - 1
+            
+            # Check if page exists
+            if page_index < 0 or page_index >= len(pdf_doc):
+                log_warning(f"Page {page_number} (index {page_index}) does not exist in PDF with {len(pdf_doc)} pages", "claude_vision.convert_single_page")
+                return None
+            
+            page = pdf_doc[page_index]
+            
+            # Calculate optimal DPI for ~1.15MP target
+            page_rect = page.rect
+            target_width, target_height = self.target_image_size
+            
+            # Calculate scaling to fit target size while maintaining aspect ratio
+            scale_x = target_width / page_rect.width
+            scale_y = target_height / page_rect.height
+            scale = min(scale_x, scale_y)
+            
+            # Generate image at calculated scale
+            mat = fitz.Matrix(scale, scale)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            
+            # Convert to PNG bytes
+            img_bytes = pix.tobytes("png")
+            
+            # Clean up
+            pdf_doc.close()
+            
+            return img_bytes
+            
+        except Exception as e:
+            log_error(e, "claude_vision_analyzer._convert_single_page_to_image")
+            return None
+    
+    def _crop_area_from_single_image(self, page_image: bytes, area: Dict) -> Optional[bytes]:
+        """Crop specific area from a single page image"""
+        try:
+            # Load image with PIL
+            pil_image = Image.open(io.BytesIO(page_image))
+            
+            # Get area coordinates
+            x = area.get("x", 0)
+            y = area.get("y", 0) 
+            width = area.get("width", 100)
+            height = area.get("height", 100)
+            
+            # Get image dimensions
+            img_width, img_height = pil_image.size
+            
+            # Crop the area
+            left = max(0, int(x))
+            top = max(0, int(y))
+            right = min(img_width, int(x + width))
+            bottom = min(img_height, int(y + height))
+            
+            cropped = pil_image.crop((left, top, right, bottom))
+            
+            # Convert back to bytes
+            img_buffer = io.BytesIO()
+            cropped.save(img_buffer, format='PNG', optimize=True)
+            return img_buffer.getvalue()
+            
+        except Exception as e:
+            log_error(e, "claude_vision_analyzer._crop_area_from_single_image")
+            return None
+    
+    def _analyze_area_with_claude(self, area_image: bytes, area_info: Dict, scale_factor: Optional[float] = None) -> Dict[str, Any]:
         """Analyze a specific cropped area with Claude Vision"""
         try:
+            # Default scale_factor to 100 if not provided
+            effective_scale_factor = scale_factor if scale_factor is not None else 100.0
+            
             # Get calculation-type-specific prompt
             calculation_type = area_info.get("calculation_type", "general")
             prompt = self._get_area_specific_prompt(calculation_type)
@@ -1204,6 +1338,7 @@ Look carefully at the drawing and provide your analysis:"""
                 "claude_response": json_data or {"raw_text": response_text},
                 "processing_time_ms": api_time,
                 "cost_estimate_usd": cost_estimate,
+                "scale_factor": scale_factor,
                 "success": True
             }
             
@@ -1355,6 +1490,368 @@ Return your analysis as JSON with rafter-specific information."""
         
         return form_data
     
+    def detect_joist_patterns(self, pdf_content: bytes, example_pdf_path: Optional[str] = None) -> Dict[str, Any]:
+        """Detect J1 cross-pattern joists (J1A-F) using Claude Vision with training example"""
+        start_time = time.time()
+        
+        try:
+            log_processing_step("joist_pattern_detection", "started")
+            
+            # Convert PDF to images
+            pdf_images = self._convert_pdf_to_images(pdf_content)
+            if not pdf_images:
+                return {"patterns_found": [], "error": "Failed to convert PDF to images"}
+            
+            # Load example PDF if provided for training
+            example_image = None
+            if example_pdf_path and os.path.exists(example_pdf_path):
+                try:
+                    with open(example_pdf_path, 'rb') as f:
+                        example_pdf_content = f.read()
+                    example_images = self._convert_pdf_to_images(example_pdf_content)
+                    if example_images:
+                        example_image = example_images[0][0]  # First page
+                        log_processing_step("example_pdf_loaded", "success")
+                except Exception as e:
+                    log_error(e, "Failed to load example PDF")
+            
+            # Analyze with Claude Vision using pattern detection prompt
+            result = self._analyze_joist_patterns_with_claude(pdf_images[0][0], example_image)
+            
+            processing_time = (time.time() - start_time) * 1000
+            
+            log_processing_step("joist_pattern_detection", "completed",
+                              duration_ms=processing_time,
+                              details={"patterns_found": len(result.get("patterns", []))})
+            
+            return result
+            
+        except Exception as e:
+            processing_time = (time.time() - start_time) * 1000
+            log_error(e, "claude_vision_analyzer.detect_joist_patterns")
+            return {
+                "patterns_found": [],
+                "error": str(e),
+                "processing_time_ms": processing_time
+            }
+    
+    def _analyze_joist_patterns_with_claude(self, target_image: bytes, example_image: Optional[bytes] = None) -> Dict[str, Any]:
+        """Analyze PDF for J1 cross-pattern sections using Claude Vision"""
+        try:
+            # Prepare content blocks
+            content_blocks = []
+            
+            # Add example image if available
+            if example_image:
+                example_base64 = base64.b64encode(example_image).decode('utf-8')
+                content_blocks.extend([
+                    {
+                        "type": "text",
+                        "text": "Here is an example showing J1A through J1F patterns marked on a similar drawing:"
+                    },
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": example_base64
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": "Notice how J1A-F are cross-hatched rectangular areas with parallel lines indicating joists. Some are rotated 90 degrees in narrow spaces."
+                    }
+                ])
+            
+            # Add target image
+            target_base64 = base64.b64encode(target_image).decode('utf-8')
+            content_blocks.extend([
+                {
+                    "type": "text",
+                    "text": "Now analyze this drawing and find similar cross-hatched rectangular patterns:"
+                },
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": target_base64
+                    }
+                }
+            ])
+            
+            # Add the pattern detection prompt
+            content_blocks.append({
+                "type": "text",
+                "text": self._get_joist_pattern_detection_prompt()
+            })
+            
+            # Send to Claude
+            start_time = time.time()
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                messages=[{
+                    "role": "user",
+                    "content": content_blocks
+                }]
+            )
+            
+            api_time = (time.time() - start_time) * 1000
+            
+            # Parse response
+            response_text = message.content[0].text if message.content else ""
+            patterns_data = self._extract_json_from_response(response_text)
+            
+            if patterns_data:
+                patterns_data["processing_time_ms"] = api_time
+                patterns_data["method"] = "claude_vision_pattern_detection"
+                return patterns_data
+            
+            return {
+                "patterns_found": [],
+                "error": "Failed to parse pattern detection response",
+                "raw_response": response_text,
+                "processing_time_ms": api_time
+            }
+            
+        except Exception as e:
+            log_error(e, "claude_vision_analyzer._analyze_joist_patterns_with_claude")
+            return {"patterns_found": [], "error": str(e)}
+    
+    def _get_joist_pattern_detection_prompt(self) -> str:
+        """Get specialized prompt for J1 cross-pattern detection"""
+        return """You are analyzing an architectural drawing to detect J1 joist patterns.
+
+**IMPORTANT CONTEXT:**
+- J1A through J1F are NOT labels on the drawing - they are our numbering system
+- We need to find 6 distinct cross-hatched rectangular areas that represent joist sections
+- Each section has parallel lines indicating individual joists
+- Some sections may be rotated 90 degrees (vertical instead of horizontal)
+
+**What to look for:**
+1. **Cross-hatched rectangles**: Areas with parallel lines (the joists)
+2. **Boundaries**: Clear rectangular boundaries around each joist section
+3. **Pattern characteristics**:
+   - Parallel lines at consistent spacing (typically 450mm for J1)
+   - Lines extend to the boundaries (arrows or walls)
+   - May be horizontal OR vertical orientation
+4. **Nearby labels**: Look for "J1" text labels near these patterns
+
+**Detection approach:**
+1. Identify all cross-hatched rectangular regions
+2. Number them J1A through J1F based on position (left-to-right, top-to-bottom)
+3. Record the bounding box coordinates for each pattern
+
+Return your analysis as JSON:
+```json
+{
+  "patterns_found": [
+    {
+      "label": "J1A",
+      "bounding_box": {
+        "x": 100,
+        "y": 200,
+        "width": 300,
+        "height": 150
+      },
+      "orientation": "horizontal",
+      "confidence": 0.95,
+      "characteristics": "Large horizontal cross-hatched area with ~8 parallel lines",
+      "nearby_text": "J1"
+    },
+    // ... J1B through J1F
+  ],
+  "total_patterns": 6,
+  "overall_confidence": 0.90,
+  "detection_notes": "Found 6 distinct cross-hatched rectangular regions matching J1 joist patterns"
+}
+```
+
+**Important:**
+- Number patterns J1A-F based on spatial position, NOT on any labels in the drawing
+- Include ALL cross-hatched rectangular areas that could be joist sections
+- Note orientation (horizontal/vertical) for each pattern
+- Coordinates should be in pixels relative to the image
+"""
+    
+    def detect_joist_measurements(self, pdf_content: bytes, scale_factor: float = 100.0) -> List[JoistMeasurement]:
+        """
+        Detect and measure actual joist structural lines from PDF
+        - Horizontal lines with arrows = joist spans
+        - Vertical lines with circles = blocking/support lines
+        """
+        start_time = time.time()
+        
+        try:
+            log_processing_step("joist_measurement_detection", "started")
+            
+            # Convert PDF to images
+            pdf_images = self._convert_pdf_to_images(pdf_content)
+            if not pdf_images:
+                return []
+            
+            # Analyze structural lines with Claude Vision
+            measurements = self._analyze_structural_lines_with_claude(pdf_images[0][0], scale_factor)
+            
+            processing_time = (time.time() - start_time) * 1000
+            
+            log_processing_step("joist_measurement_detection", "completed",
+                              duration_ms=processing_time,
+                              details={"measurements_found": len(measurements)})
+            
+            return measurements
+            
+        except Exception as e:
+            log_error(e, "claude_vision_analyzer.detect_joist_measurements")
+            return []
+    
+    def _analyze_structural_lines_with_claude(self, image_bytes: bytes, scale_factor: float) -> List[JoistMeasurement]:
+        """Analyze structural lines to extract joist measurements"""
+        try:
+            # Encode image
+            img_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            
+            # Prepare Claude request
+            content_blocks = [
+                {
+                    "type": "text",
+                    "text": self._get_structural_line_measurement_prompt(scale_factor)
+                },
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": img_base64
+                    }
+                }
+            ]
+            
+            # Send to Claude
+            start_time = time.time()
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                messages=[{
+                    "role": "user",
+                    "content": content_blocks
+                }]
+            )
+            
+            api_time = (time.time() - start_time) * 1000
+            
+            # Parse response
+            response_text = message.content[0].text if message.content else ""
+            measurements_data = self._extract_json_from_response(response_text)
+            
+            # Convert to JoistMeasurement objects
+            measurements = []
+            if measurements_data and 'measurements' in measurements_data:
+                for m in measurements_data['measurements']:
+                    measurement = JoistMeasurement(
+                        pattern_label=m.get('label', ''),
+                        horizontal_span_m=m.get('horizontal_span_m', 0.0),
+                        vertical_span_m=m.get('vertical_span_m'),
+                        joist_count=m.get('joist_count', 1),
+                        confidence=m.get('confidence', 0.0),
+                        measurement_method=m.get('method', 'structural_lines'),
+                        line_details=m.get('line_details', {}),
+                        line_coordinates=m.get('line_coordinates', {})
+                    )
+                    measurements.append(measurement)
+            
+            return measurements
+            
+        except Exception as e:
+            log_error(e, "claude_vision_analyzer._analyze_structural_lines_with_claude")
+            return []
+    
+    def _get_structural_line_measurement_prompt(self, scale_factor: float) -> str:
+        """Get prompt for measuring structural lines"""
+        # Default to 100 if scale_factor is None
+        effective_scale_factor = scale_factor if scale_factor is not None else 100.0
+        
+        return f"""You are analyzing a structural drawing to measure joist dimensions by identifying structural lines.
+
+**IMPORTANT**: The drawing scale is 1:{effective_scale_factor}
+
+**What to Look For:**
+
+1. **Horizontal Lines with Arrows**:
+   - These represent joist spans
+   - Have arrows at both ends (←─────→)
+   - Measure the length between arrows
+   - This gives the horizontal span dimension
+
+2. **Vertical Lines with Circles**:
+   - These intersect with horizontal joist lines
+   - Have small circles (○) at intersection points
+   - Measure from top to bottom of the vertical line
+   - This gives the vertical span/blocking dimension
+
+3. **Parallel Lines**:
+   - Multiple parallel horizontal lines indicate multiple joists
+   - Count how many parallel joist lines exist in each section
+
+**Measurement Process:**
+1. Identify each distinct joist section (may be labeled J1, J2, etc.)
+2. Find the horizontal line(s) with arrows
+3. Measure the pixel length of the horizontal line
+4. Convert to real dimensions using scale (pixels / scale_factor = meters)
+5. Find vertical lines that intersect (look for circles at intersections)
+6. Measure vertical line lengths and convert to meters
+
+Return your analysis as JSON:
+```json
+{{
+  "measurements": [
+    {{
+      "label": "J1",
+      "horizontal_span_m": 3.386,
+      "vertical_span_m": 4.872,
+      "joist_count": 8,
+      "confidence": 0.95,
+      "method": "structural_lines",
+      "line_details": {{
+        "horizontal_pixels": 338.6,
+        "vertical_pixels": 487.2,
+        "arrows_found": true,
+        "circles_found": true,
+        "parallel_lines": 8
+      }},
+      "line_coordinates": {{
+        "horizontal_line": {{
+          "start_x": 150,
+          "start_y": 300,
+          "end_x": 488.6,
+          "end_y": 300
+        }},
+        "vertical_line": {{
+          "start_x": 150,
+          "start_y": 300,
+          "end_x": 150,
+          "end_y": 787.2
+        }}
+      }}
+    }}
+  ],
+  "total_sections": 2,
+  "scale_applied": {effective_scale_factor},
+  "detection_notes": "Found 2 main joist sections (J1 and J2) with clear dimensional lines"
+}}
+```
+
+**Critical Instructions:**
+- Measure the actual structural lines, not the cross-hatching
+- Look for arrows to identify span dimensions
+- Look for circles to identify intersection points
+- Apply the scale factor to convert pixels to meters
+- Count parallel lines to determine joist quantity
+- Provide exact pixel coordinates for the start and end points of measured lines
+- Use simple labels like "J1", "J2" for main sections (not J1A-F subdivisions)
+"""
+    
     def create_form_data_from_area_analysis(self, area_result: Dict[str, Any]) -> Dict[str, Any]:
         """Convert area analysis result to form data format"""
         form_data = {
@@ -1382,13 +1879,19 @@ Return your analysis as JSON with rafter-specific information."""
             # Extract measurements
             measurements = best_element.get("measurements", {})
             if measurements:
-                if "spacing_mm" in measurements:
+                if "spacing_mm" in measurements and measurements["spacing_mm"] is not None:
                     form_data["joist_spacing"] = measurements["spacing_mm"] / 1000  # Convert to meters
                 
                 if "width_mm" in measurements and "depth_mm" in measurements:
-                    form_data["material_detected"] = f"{measurements['width_mm']}x{measurements['depth_mm']}"
-                    if "material" in measurements:
-                        form_data["material_detected"] += f" {measurements['material']}"
+                    width_mm = measurements.get('width_mm')
+                    depth_mm = measurements.get('depth_mm')
+                    if width_mm is not None and depth_mm is not None:
+                        form_data["material_detected"] = f"{width_mm}x{depth_mm}"
+                        if "material" in measurements:
+                            form_data["material_detected"] += f" {measurements['material']}"
+                    elif "material" in measurements:
+                        # If we don't have dimensions but have material type
+                        form_data["material_detected"] = measurements['material']
             
             # Add all detected elements
             form_data["all_detected_elements"] = detected_elements

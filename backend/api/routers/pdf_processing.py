@@ -15,7 +15,7 @@ try:
     log_info("Advanced PDF analyzer imported successfully", "pdf_processing.imports")
 except Exception as e:
     ADVANCED_PDF_AVAILABLE = False
-    log_error(e, "pdf_processing.imports", {"module": "advanced_pdf_analyzer"})
+    log_error(e, "pdf_processing.imports", additional_info={"module": "advanced_pdf_analyzer"})
 
 try:
     from pdf_processing.advanced_joist_detector import AdvancedJoistDetector
@@ -23,7 +23,7 @@ try:
     log_info("Advanced joist detector imported successfully", "pdf_processing.imports")
 except Exception as e:
     ADVANCED_JOIST_AVAILABLE = False
-    log_error(e, "pdf_processing.imports", {"module": "advanced_joist_detector"})
+    log_error(e, "pdf_processing.imports", additional_info={"module": "advanced_joist_detector"})
 
 try:
     from pdf_processing.claude_vision_analyzer import ClaudeVisionAnalyzer
@@ -31,7 +31,7 @@ try:
     log_info("Claude Vision analyzer imported successfully", "pdf_processing.imports")
 except Exception as e:
     CLAUDE_VISION_AVAILABLE = False
-    log_error(e, "pdf_processing.imports", {"module": "claude_vision_analyzer"})
+    log_error(e, "pdf_processing.imports", additional_info={"module": "claude_vision_analyzer"})
 
 try:
     from pdf_processing.hybrid_analyzer import HybridPDFAnalyzer
@@ -39,7 +39,7 @@ try:
     log_info("Hybrid PDF analyzer imported successfully", "pdf_processing.imports")
 except Exception as e:
     HYBRID_ANALYZER_AVAILABLE = False
-    log_error(e, "pdf_processing.imports", {"module": "hybrid_analyzer"})
+    log_error(e, "pdf_processing.imports", additional_info={"module": "hybrid_analyzer"})
 
 router = APIRouter()
 
@@ -930,7 +930,7 @@ async def analyze_pdf_with_claude_vision(file: UploadFile = File(...)):
         return response
         
     except Exception as e:
-        error_id = log_error(e, "pdf_processing.claude_vision.analyze", {
+        error_id = log_error(e, "pdf_processing.claude_vision.analyze", additional_info={
             "file_size": len(content) if 'content' in locals() else 0
         })
         
@@ -1118,6 +1118,7 @@ async def analyze_selected_areas(
         try:
             request_data = json.loads(request)
             selection_areas = request_data.get("selection_areas", [])
+            scale_factor = request_data.get("scale_factor", None)
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid JSON in request parameter")
         
@@ -1125,7 +1126,7 @@ async def analyze_selected_areas(
         analyzer = ClaudeVisionAnalyzer()
         
         # Analyze the selected areas
-        area_result = analyzer.analyze_selected_areas(content, selection_areas)
+        area_result = analyzer.analyze_selected_areas(content, selection_areas, scale_factor)
         
         # Generate form data from the area analysis
         form_data = analyzer.create_form_data_from_area_analysis(area_result)
@@ -1220,8 +1221,16 @@ async def analyze_pdf_with_assumptions(
             tmp_path = tmp_file.name
         
         try:
-            # Use hybrid analyzer
-            analyzer = HybridPDFAnalyzer()
+            # Initialize Claude Vision if available
+            claude_vision = None
+            if CLAUDE_VISION_AVAILABLE:
+                try:
+                    claude_vision = ClaudeVisionAnalyzer()
+                except Exception as e:
+                    log_warning(f"Failed to initialize Claude Vision: {e}", "pdf_processing.analyze_with_assumptions")
+            
+            # Use hybrid analyzer with Claude Vision
+            analyzer = HybridPDFAnalyzer(claude_vision_analyzer=claude_vision)
             results = analyzer.analyze_pdf(tmp_path)
             
             # Override scale if provided
@@ -1263,6 +1272,30 @@ async def analyze_pdf_with_assumptions(
                         'confidence': j.confidence
                     }
                     for j in results['joists']
+                ],
+                'joist_patterns': [
+                    {
+                        'label': p.label,
+                        'bounding_box': p.bounding_box,
+                        'orientation': p.orientation,
+                        'confidence': p.confidence,
+                        'characteristics': p.characteristics,
+                        'nearby_text': p.nearby_text
+                    }
+                    for p in results.get('joist_patterns', [])
+                ],
+                'joist_measurements': [
+                    {
+                        'pattern_label': m.pattern_label,
+                        'horizontal_span_m': m.horizontal_span_m,
+                        'vertical_span_m': m.vertical_span_m,
+                        'joist_count': m.joist_count,
+                        'confidence': m.confidence,
+                        'measurement_method': m.measurement_method,
+                        'line_details': m.line_details,
+                        'line_coordinates': m.line_coordinates
+                    }
+                    for m in results.get('joist_measurements', [])
                 ],
                 'assumptions': [
                     {
