@@ -21,7 +21,8 @@ import {
   ControlOutlined,
   CalculatorOutlined,
   RobotOutlined,
-  ExperimentOutlined
+  ExperimentOutlined,
+  FileSearchOutlined
 } from '@ant-design/icons';
 import type { UploadProps } from 'antd';
 import SimplePDFViewer from './components/pdf-viewer/SimplePDFViewer';
@@ -30,6 +31,7 @@ import ResultsDisplay from './components/ResultsDisplay';
 import AgentDashboard from './components/agents/AgentDashboard';
 import AgentControlPanel from './components/agents/AgentControlPanel';
 import ScaleDetectionDemo from './components/ScaleDetectionDemo';
+import MeasurementExtractionDemo from './components/MeasurementExtractionDemo';
 import { apiClient } from './utils/api';
 
 const { Header, Content, Sider } = Layout;
@@ -37,7 +39,7 @@ const { Title, Text } = Typography;
 const { Dragger } = Upload;
 const { TabPane } = Tabs;
 
-type ViewMode = 'traditional' | 'multi-agent' | 'dashboard' | 'control' | 'scale-detection';
+type ViewMode = 'traditional' | 'multi-agent' | 'dashboard' | 'control' | 'scale-detection' | 'measurement-extraction';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewMode>('traditional');
@@ -227,6 +229,11 @@ const App: React.FC = () => {
       icon: <ExperimentOutlined />,
       label: 'Scale Detection (Beta)',
     },
+    {
+      key: 'measurement-extraction',
+      icon: <FileSearchOutlined />,
+      label: 'Measurement Extraction',
+    },
   ];
 
   const renderTraditionalView = () => (
@@ -373,6 +380,8 @@ const App: React.FC = () => {
         return <AgentControlPanel onRefresh={refreshDashboard} />;
       case 'scale-detection':
         return <ScaleDetectionDemo />;
+      case 'measurement-extraction':
+        return <MeasurementExtractionDemo />;
       default:
         return renderTraditionalView();
     }

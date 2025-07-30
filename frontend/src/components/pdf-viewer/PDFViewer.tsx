@@ -4,6 +4,7 @@ import { ZoomInOutlined, ZoomOutOutlined, FullscreenOutlined } from '@ant-design
 import * as pdfjsLib from 'pdfjs-dist';
 import { useAppStore } from '../../stores/appStore';
 import SelectionOverlay from './SelectionOverlay';
+import MeasurementOverlay from './MeasurementOverlay';
 
 // Set up PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -11,9 +12,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.j
 interface PDFViewerProps {
   file: File;
   onAnalysis?: (analysis: any) => void;
+  measurements?: any[];
 }
 
-const PDFViewer: React.FC<PDFViewerProps> = ({ file, onAnalysis }) => {
+const PDFViewer: React.FC<PDFViewerProps> = ({ file, onAnalysis, measurements = [] }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -237,6 +239,16 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ file, onAnalysis }) => {
             canvasHeight={canvasRef.current?.height || 0}
             zoomLevel={zoomLevel}
           />
+          
+          {/* Measurement Overlay */}
+          {measurements.length > 0 && (
+            <MeasurementOverlay
+              measurements={measurements}
+              canvasWidth={canvasRef.current?.width || 0}
+              canvasHeight={canvasRef.current?.height || 0}
+              zoomLevel={zoomLevel}
+            />
+          )}
         </div>
       </div>
     </div>

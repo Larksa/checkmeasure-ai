@@ -11,7 +11,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 90000, // Increased to 90 seconds for Claude Vision analysis (handles rate limiting)
   headers: {
     'Content-Type': 'application/json',
   },
@@ -95,7 +95,8 @@ api.interceptors.response.use(
     if (error.response?.status === 404) {
       throw new Error('API endpoint not found');
     } else if (error.response?.status === 500) {
-      throw new Error('Server error - please try again later');
+      console.error('500 Error Details:', error.response?.data);
+      throw new Error(error.response?.data?.detail || 'Server error - please try again later');
     } else if (error.code === 'ECONNABORTED') {
       throw new Error('Request timeout - please try again');
     } else if (error.response?.status === 422) {

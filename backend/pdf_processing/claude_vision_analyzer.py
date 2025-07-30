@@ -366,7 +366,7 @@ class ClaudeVisionAnalyzer:
         self.max_tokens = 4000
         
         # Image optimization settings
-        self.target_image_size = (1200, 960)  # ~1.15MP optimal for Claude
+        self.target_image_size = (800, 600)  # Reduced for faster processing
         self.image_quality = 85  # JPEG quality
         
         # Initialize Scale Detection Engine
@@ -1328,6 +1328,17 @@ Look carefully at the drawing and provide your analysis:"""
             response_text = message.content[0].text if message.content else ""
             json_data = self._extract_json_from_response(response_text)
             
+            # Log Claude Vision response for debugging
+            log_info(f"Claude Vision raw response length: {len(response_text)} chars", "claude_vision.debug")
+            if json_data:
+                log_info(f"Claude Vision parsed JSON keys: {list(json_data.keys())}", "claude_vision.debug")
+                if "detected_elements" in json_data:
+                    log_info(f"Detected {len(json_data['detected_elements'])} elements", "claude_vision.debug")
+                    for i, elem in enumerate(json_data['detected_elements']):
+                        log_info(f"Element {i}: label='{elem.get('label')}', type='{elem.get('type')}', measurements={elem.get('measurements', {})}", "claude_vision.debug")
+            else:
+                log_warning("Failed to parse JSON from Claude Vision response", "claude_vision.debug")
+            
             # Calculate cost
             usage = message.usage.__dict__ if hasattr(message, 'usage') else None
             cost_estimate = self._estimate_api_cost(usage) if usage else None
@@ -1356,18 +1367,43 @@ Look carefully at the drawing and provide your analysis:"""
         prompts = {
             "joist": """You are analyzing a specific area marked by a user that contains joist specifications.
 
-Focus ONLY on this marked area and identify:
-1. **Joist Labels**: Any labels like "J1", "J2", "J3", etc.
-2. **Joist Specifications**: Text describing dimensions and materials (e.g., "200 x 45 LVL at 450 centres")
-3. **Measurements**: Any dimensions, spacing, or span measurements
+**PRIMARY GOAL: Detect and measure standard components for automatic calibration**
+
+Focus on this marked area and identify:
+
+1. **CRITICAL - Standard Components for Calibration**:
+   - **Steel Sections**: Look for "200PFC", "200UB25", "250UB31", etc.
+     - MEASURE their visible dimensions in pixels (depth, flange width)
+     - These have KNOWN dimensions: 200PFC = 200mm deep × 75mm flange
+   - **Timber/LVL Sizes**: Look for "200x45", "150x45 LVL", etc.
+     - MEASURE their width and/or depth in pixels
+     - Format: width × depth (e.g., 200x45 = 200mm × 45mm)
+   - **Spacing Patterns**: "450 CTS", "300 CTS", "@450", etc.
+     - MEASURE the actual spacing between elements in pixels
+
+2. **Joist Information**:
+   - Labels like "J1", "J2", "J3"
+   - Full specifications (e.g., "200 x 45 LVL at 450 centres")
+   - Any span or dimension measurements
 
 Return your analysis as JSON:
 ```json
 {
   "detected_elements": [
     {
+      "label": "200x45",
+      "type": "timber",
+      "confidence": 0.95,
+      "measurements": {
+        "width_pixels": 85,
+        "height_pixels": 19,
+        "spacing_pixels": 190
+      },
+      "specification": "200 x 45 LVL at 450 centres"
+    },
+    {
       "label": "J1",
-      "specification": "200 x 45 LVL at 450 centres", 
+      "type": "joist",
       "confidence": 0.95,
       "measurements": {
         "width_mm": 200,
@@ -1377,11 +1413,21 @@ Return your analysis as JSON:
       }
     }
   ],
+  "calibration_candidates": [
+    {
+      "component": "200x45 timber",
+      "measured_pixels": 85,
+      "expected_mm": 200,
+      "pixels_per_mm": 0.425
+    }
+  ],
   "span_measurements": ["3.386m", "450mm"],
   "confidence": 0.90,
-  "reasoning": "Clear joist specification found in marked area"
+  "reasoning": "Found 200x45 LVL with measurable dimensions for calibration"
 }
-```""",
+```
+
+**IMPORTANT**: Accurate pixel measurements are critical for calibration!""",
             
             "beam": """You are analyzing a specific area marked by a user that contains beam specifications.
 
@@ -1411,13 +1457,26 @@ Focus ONLY on this marked area and identify:
 3. **Pitch/Angle**: Any roof pitch information
 4. **Span Measurements**: Rafter length dimensions
 
-Return your analysis as JSON with rafter-specific information."""
+Return your analysis as JSON with rafter-specific information.""",
+            
+            "general": """You are analyzing a construction drawing area focusing on standard components for automatic calibration.
+
+**PRIMARY GOAL: Detect and measure standard components**
+
+1. **Steel Sections**: "200PFC", "200UB25", "250UB31" etc. - MEASURE in pixels
+2. **Timber Sizes**: "200x45", "150x45 LVL" etc. - MEASURE in pixels  
+3. **Spacing Patterns**: "450 CTS", "@450" etc. - MEASURE spacing in pixels
+4. **Other Elements**: Any structural elements, dimensions, or specifications
+
+Return as JSON with detected_elements array including pixel measurements for calibration."""
         }
         
-        return prompts.get(calculation_type, prompts["joist"])  # Default to joist
+        return prompts.get(calculation_type, prompts["general"])  # Default to general
     
     def _combine_area_results(self, area_results: List[Dict], processing_time: float, total_cost: float) -> Dict[str, Any]:
         """Combine multiple area analysis results into unified response"""
+        from .calibration import AutoCalibrator
+        
         successful_results = [r for r in area_results if r.get("success", False)]
         
         all_elements = []
@@ -1441,6 +1500,25 @@ Return your analysis as JSON with rafter-specific information."""
         
         overall_confidence = sum(confidences) / len(confidences) if confidences else 0.0
         
+        # Log elements before calibration
+        log_info(f"Attempting auto-calibration with {len(all_elements)} total elements", "claude_vision.auto_calibration")
+        for i, elem in enumerate(all_elements):
+            log_info(f"Calibration input element {i}: {elem}", "claude_vision.auto_calibration")
+        
+        # Perform auto-calibration using detected elements
+        calibrator = AutoCalibrator()
+        calibration_result = calibrator.auto_calibrate(all_elements)
+        
+        # Log calibration results
+        if calibration_result.status == "auto_calibrated":
+            log_info(
+                f"Auto-calibration successful: {calibration_result.pixels_per_mm:.3f} px/mm "
+                f"using {calibration_result.method.value} with confidence {calibration_result.confidence:.2f}",
+                "claude_vision.auto_calibration"
+            )
+        else:
+            log_warning(f"Auto-calibration failed with status: {calibration_result.status}, method: {calibration_result.method.value}", "claude_vision.auto_calibration")
+        
         return {
             "area_analysis_results": area_results,
             "detected_elements": all_elements,
@@ -1449,7 +1527,16 @@ Return your analysis as JSON with rafter-specific information."""
             "processing_time_ms": processing_time,
             "total_cost_estimate_usd": total_cost,
             "successful_areas": len(successful_results),
-            "total_areas": len(area_results)
+            "total_areas": len(area_results),
+            "calibration": {
+                "method": calibration_result.method.value,
+                "status": calibration_result.status,
+                "pixels_per_mm": calibration_result.pixels_per_mm,
+                "mm_per_pixel": calibration_result.mm_per_pixel,
+                "confidence": calibration_result.confidence,
+                "reference_components": calibration_result.reference_components,
+                "details": calibration_result.calibration_details
+            }
         }
 
     def create_form_data_from_result(self, result: ClaudeVisionResult) -> Dict[str, Any]:

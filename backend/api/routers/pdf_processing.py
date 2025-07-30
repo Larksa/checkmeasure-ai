@@ -3,10 +3,12 @@ from pydantic import BaseModel
 from typing import List, Optional
 from pdf_processing.pdf_analyzer import PDFAnalyzer
 from pdf_processing.joist_detector import JoistDetector
+from pdf_processing.pdf_scale_calculator import PDFScaleCalculator, COMMON_SCALES
 from utils.dependency_checker import DependencyChecker
 from utils.error_logger import error_logger, log_error, log_warning, log_info
 import traceback
 import logging
+import fitz  # PyMuPDF
 
 # Try to import advanced modules with error handling
 try:
@@ -100,6 +102,8 @@ class AreaAnalysisResult(BaseModel):
     processing_time_ms: float
     total_cost_estimate_usd: Optional[float]
     form_data: dict
+    scale_notation: str
+    measurements: Optional[dict] = None
 
 @router.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
@@ -1118,18 +1122,54 @@ async def analyze_selected_areas(
         try:
             request_data = json.loads(request)
             selection_areas = request_data.get("selection_areas", [])
-            scale_factor = request_data.get("scale_factor", None)
+            scale_notation = request_data.get("scale_notation", "1:100 at A3")  # Default scale
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail="Invalid JSON in request parameter")
         
         # Initialize Claude Vision analyzer
         analyzer = ClaudeVisionAnalyzer()
         
-        # Analyze the selected areas
-        area_result = analyzer.analyze_selected_areas(content, selection_areas, scale_factor)
+        # Analyze the selected areas (without scale_factor)
+        area_result = analyzer.analyze_selected_areas(content, selection_areas, None)
+        
+        # Calculate measurements using PDF scale calculator
+        measurements = None
+        if selection_areas:
+            try:
+                # Open PDF to get page dimensions
+                pdf_doc = fitz.open(stream=content, filetype="pdf")
+                page = pdf_doc[0]  # Assuming first page for now
+                
+                # Get PDF page dimensions in mm
+                pdf_width_mm = page.rect.width * 0.3528
+                pdf_height_mm = page.rect.height * 0.3528
+                
+                # Initialize scale calculator
+                scale_calc = PDFScaleCalculator(scale_notation)
+                
+                # For now, measure the first selected area
+                area = selection_areas[0]
+                measurements = scale_calc.measure_area(
+                    area.get("x", 0),
+                    area.get("y", 0),
+                    area.get("x", 0) + area.get("width", 0),
+                    area.get("y", 0) + area.get("height", 0),
+                    pdf_width_mm,
+                    pdf_height_mm
+                )
+                
+                log_info(f"Calculated measurements: {measurements}", "pdf_processing.scale_calculation")
+                
+            except Exception as e:
+                log_error(e, "pdf_processing.scale_calculation")
+                measurements = None
         
         # Generate form data from the area analysis
         form_data = analyzer.create_form_data_from_area_analysis(area_result)
+        
+        # Add measurements to form data if available
+        if measurements:
+            form_data["measurements"] = measurements
         
         # Store debug information
         _last_detection_details = {
@@ -1165,7 +1205,9 @@ async def analyze_selected_areas(
             combined_reasoning=area_result.get("combined_reasoning", ""),
             processing_time_ms=area_result.get("processing_time_ms", 0),
             total_cost_estimate_usd=area_result.get("total_cost_estimate_usd", 0),
-            form_data=form_data
+            form_data=form_data,
+            scale_notation=scale_notation,
+            measurements=measurements
         )
         
     except Exception as e:
@@ -1344,5 +1386,16 @@ async def test_pdf_processing():
             "/api/pdf/analyze-claude-vision",
             "/api/pdf/auto-populate-claude-vision",
             "/api/pdf/analyze-selected-areas"
+        ],
+        "scale_endpoints": [
+            "/api/pdf/scale-notations"
         ]
+    }
+
+@router.get("/scale-notations")
+async def get_scale_notations():
+    """Get list of common scale notations for UI"""
+    return {
+        "common_scales": COMMON_SCALES,
+        "default": "1:100 at A3"
     }

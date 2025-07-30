@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Card, Button, Upload, message, Space, Spin, Typography, Input, Row, Col, List, Tag, Modal, Select } from 'antd';
-import { UploadOutlined, FileSearchOutlined, EditOutlined, CheckOutlined, SelectOutlined } from '@ant-design/icons';
+import { UploadOutlined, FileSearchOutlined, EditOutlined, CheckOutlined, SelectOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import PDFViewer from './pdf-viewer/PDFViewer';
 import { useAppStore } from '../stores/appStore';
@@ -11,10 +11,20 @@ const { Option } = Select;
 
 interface ScaleResult {
   scale_ratio: string;
+  scale_notation?: string;  // Added for new scale system
   scale_factor: number;
   confidence: number;
   method: string;
   source_text?: string;
+  calibration?: {
+    method: string;
+    status: string;
+    pixels_per_mm: number;
+    mm_per_pixel: number;
+    confidence: number;
+    reference_components: string[];
+    details: any;
+  };
 }
 
 interface MeasuredArea {
@@ -33,6 +43,8 @@ interface MeasuredArea {
     height_m: number;
     confidence: number;
   };
+  calibrationMethod?: string;
+  scaleUsed?: string;  // Added for new scale system
   status: 'pending' | 'analyzing' | 'success' | 'error';
   statusMessage?: string;
 }
@@ -47,7 +59,7 @@ const MeasurementExtractionDemo: React.FC = () => {
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [labelInput, setLabelInput] = useState('');
   const [manualScaleMode, setManualScaleMode] = useState(false);
-  const [selectedPresetScale, setSelectedPresetScale] = useState<string>('1:100');
+  const [selectedPresetScale, setSelectedPresetScale] = useState<string>('1:100 at A3');
   
   const { 
     isSelecting, 
@@ -56,14 +68,16 @@ const MeasurementExtractionDemo: React.FC = () => {
     clearSelectionAreas 
   } = useAppStore();
 
-  // Common architectural scales
+  // Common architectural scales with paper size notation
   const commonScales = [
-    { value: '1:20', label: '1:20 (Detail drawings)' },
-    { value: '1:50', label: '1:50 (Floor plans - residential)' },
-    { value: '1:100', label: '1:100 (Floor plans - commercial)' },
-    { value: '1:200', label: '1:200 (Site plans)' },
-    { value: '1:500', label: '1:500 (Large site plans)' },
-    { value: '1:1000', label: '1:1000 (Master plans)' },
+    { value: '1:20 at A3', label: '1:20 at A3 (Detail drawings)' },
+    { value: '1:50 at A3', label: '1:50 at A3 (Floor plans - residential)' },
+    { value: '1:100 at A3', label: '1:100 at A3 (Floor plans - commercial)' },
+    { value: '1:200 at A3', label: '1:200 at A3 (Site plans)' },
+    { value: '1:500 at A3', label: '1:500 at A3 (Large site plans)' },
+    { value: '1:100 at A2', label: '1:100 at A2' },
+    { value: '1:100 at A1', label: '1:100 at A1' },
+    { value: '1:50 at A1', label: '1:50 at A1' },
     { value: 'custom', label: 'Custom...' }
   ];
 
@@ -96,29 +110,30 @@ const MeasurementExtractionDemo: React.FC = () => {
   };
 
   const handleManualScaleSet = () => {
-    let scaleRatio = selectedPresetScale;
-    let scaleFactor = 100; // default
+    let scaleNotation = selectedPresetScale;
     
     if (selectedPresetScale === 'custom') {
-      scaleRatio = overrideScale;
+      scaleNotation = overrideScale;
     }
     
-    // Parse scale factor from ratio (e.g., "1:100" -> 100)
-    const parts = scaleRatio.split(':');
-    if (parts.length === 2 && parts[0] === '1') {
-      scaleFactor = parseInt(parts[1]);
+    // Validate scale notation format
+    const scalePattern = /1:(\d+)\s*(?:at|@)\s*([A-Za-z]\d)/;
+    if (!scalePattern.test(scaleNotation)) {
+      message.error('Please use format like "1:100 at A3"');
+      return;
     }
     
     setScale({
-      scale_ratio: scaleRatio,
-      scale_factor: scaleFactor,
+      scale_ratio: scaleNotation,
+      scale_notation: scaleNotation,
+      scale_factor: 100, // No longer used but kept for compatibility
       confidence: 100,
       method: 'manual',
       source_text: 'User specified'
     });
     
     setManualScaleMode(false);
-    message.success(`Scale set to ${scaleRatio}`);
+    message.success(`Scale set to ${scaleNotation}`);
   };
 
   const handleAreaSelection = () => {
@@ -160,7 +175,7 @@ const MeasurementExtractionDemo: React.FC = () => {
           page_number: area.pageNumber,
           calculation_type: 'joist'
         }],
-        scale_factor: scale?.scale_factor
+        scale_notation: scale?.scale_notation || scale?.scale_ratio || '1:100 at A3'
       }));
 
       // Update status: analyzing with AI
@@ -191,10 +206,54 @@ const MeasurementExtractionDemo: React.FC = () => {
       // Extract detected label and measurements from response
       const result = response.data;
       console.log('Analysis response for area', area.id, ':', result);
+      
+      // Log measurements information
+      if (result.measurements) {
+        console.log('Measurement results:', {
+          width_mm: result.measurements.width_mm,
+          height_mm: result.measurements.height_mm,
+          width_m: result.measurements.width_m,
+          height_m: result.measurements.height_m,
+          area_m2: result.measurements.area_m2,
+          scale_used: result.measurements.scale_used
+        });
+      }
+      
+      // Log detected elements details
+      if (result.detected_elements) {
+        console.log(`Detected ${result.detected_elements.length} elements:`);
+        result.detected_elements.forEach((elem: any, idx: number) => {
+          console.log(`Element ${idx}:`, {
+            label: elem.label,
+            type: elem.type,
+            measurements: elem.measurements,
+            confidence: elem.confidence
+          });
+        });
+      }
+      
       const detectedElements = result.detected_elements || [];
+      const measurements = result.measurements;
+      
+      // Use measurements from backend if available
+      if (measurements) {
+        message.success(`Measured using scale: ${measurements.scale_used}`);
+      }
       
       if (detectedElements.length > 0) {
         const element = detectedElements[0];
+        
+        // Use measurements from backend calculation
+        let width_m: number, height_m: number;
+        if (measurements) {
+          // Use backend-calculated measurements
+          width_m = measurements.width_m;
+          height_m = measurements.height_m;
+        } else {
+          // Fallback calculation (shouldn't happen with new system)
+          width_m = area.width / 100; // Basic fallback
+          height_m = area.height / 100;
+        }
         
         // Update with detected label
         setMeasuredAreas(prev => prev.map(ma => 
@@ -204,10 +263,11 @@ const MeasurementExtractionDemo: React.FC = () => {
                 detectedLabel: element.label,
                 label: element.label, // Use detected label by default
                 measurements: {
-                  width_m: area.width / (scale?.scale_factor || 100),
-                  height_m: area.height / (scale?.scale_factor || 100),
+                  width_m: width_m,
+                  height_m: height_m,
                   confidence: element.confidence || 0.8
                 },
+                scaleUsed: measurements?.scale_used || scale?.scale_notation,
                 status: 'success'
               }
             : ma
@@ -382,6 +442,27 @@ const MeasurementExtractionDemo: React.FC = () => {
                   Method: {scale.method} | Confidence: {scale.confidence}%
                 </Text>
               </div>
+              
+              {/* Scale Information */}
+              {scale.scale_notation && (
+                <div style={{ marginTop: 16, padding: 12, background: '#f0f8ff', borderRadius: 4 }}>
+                  <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                    <Space>
+                      <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                      <Text strong>Scale Set</Text>
+                    </Space>
+                    <Text type="secondary">
+                      Scale: {scale.scale_notation || scale.scale_ratio}
+                    </Text>
+                    <Text type="secondary">
+                      Method: Mathematical calculation based on PDF dimensions
+                    </Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Measurements will be calculated using PDF coordinates and scale notation
+                    </Text>
+                  </Space>
+                </div>
+              )}
             </Card>
           )}
 
@@ -434,6 +515,11 @@ const MeasurementExtractionDemo: React.FC = () => {
                         <Text type="secondary">
                           Confidence: {(area.measurements.confidence * 100).toFixed(0)}%
                         </Text>
+                        {area.calibrationMethod && (
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            Calibrated via: {area.calibrationMethod.replace('_', ' ')}
+                          </Text>
+                        )}
                       </>
                     )}
                     

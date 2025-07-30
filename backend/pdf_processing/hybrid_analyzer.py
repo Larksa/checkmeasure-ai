@@ -4,10 +4,11 @@ for robust scale detection and joist identification.
 """
 import re
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 import pdfplumber
 from pathlib import Path
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,16 @@ class JoistDetection:
     material: Optional[str] = None
     location: Optional[Dict[str, float]] = None
     confidence: float = 0.0
+
+@dataclass
+class JoistPattern:
+    """Detected joist pattern (cross-hatched rectangular area)"""
+    label: str  # e.g., "J1A"
+    bounding_box: Dict[str, float]  # x, y, width, height
+    orientation: str  # 'horizontal' or 'vertical'
+    confidence: float
+    characteristics: str
+    nearby_text: Optional[str] = None
 
 @dataclass
 class AnalysisAssumption:
@@ -80,9 +91,10 @@ class HybridPDFAnalyzer:
         'materials': ['E13 LVL', 'E14 LVL', 'MGP10', 'MGP12']
     }
     
-    def __init__(self):
+    def __init__(self, claude_vision_analyzer=None):
         self.assumptions = []
         self.current_scale = None
+        self.claude_vision = claude_vision_analyzer
         
     def analyze_pdf(self, pdf_path: str) -> Dict:
         """
@@ -103,12 +115,62 @@ class HybridPDFAnalyzer:
         # Step 3: Detect joists
         joists = self._detect_joists(text_data)
         
-        # Step 4: Generate assumptions
-        assumptions = self._generate_assumptions(scale_result, joists)
+        # Step 4: Detect joist patterns (cross-hatched areas) if Claude Vision available
+        joist_patterns = []
+        if self.claude_vision and os.path.exists(pdf_path):
+            try:
+                with open(pdf_path, 'rb') as f:
+                    pdf_content = f.read()
+                
+                # Path to example PDF with marked patterns
+                example_pdf_path = os.path.join(
+                    os.path.dirname(pdf_path), 
+                    'joist-page-example-measured.pdf'
+                )
+                
+                pattern_result = self.claude_vision.detect_joist_patterns(
+                    pdf_content, 
+                    example_pdf_path if os.path.exists(example_pdf_path) else None
+                )
+                
+                if pattern_result.get('patterns_found'):
+                    for pattern_data in pattern_result['patterns_found']:
+                        joist_patterns.append(JoistPattern(
+                            label=pattern_data.get('label', ''),
+                            bounding_box=pattern_data.get('bounding_box', {}),
+                            orientation=pattern_data.get('orientation', 'horizontal'),
+                            confidence=pattern_data.get('confidence', 0.0),
+                            characteristics=pattern_data.get('characteristics', ''),
+                            nearby_text=pattern_data.get('nearby_text')
+                        ))
+                    logger.info(f"Detected {len(joist_patterns)} joist patterns using Claude Vision")
+            except Exception as e:
+                logger.error(f"Failed to detect joist patterns: {e}")
+        
+        # Step 5: Detect joist measurements if Claude Vision available
+        joist_measurements = []
+        if self.claude_vision and os.path.exists(pdf_path):
+            try:
+                with open(pdf_path, 'rb') as f:
+                    pdf_content = f.read()
+                
+                # Use the detected scale factor for measurement conversion
+                scale_factor = scale_result.scale_factor if scale_result.scale_factor else 100.0
+                
+                measurements = self.claude_vision.detect_joist_measurements(pdf_content, scale_factor)
+                joist_measurements = measurements
+                logger.info(f"Detected {len(joist_measurements)} joist measurements using Claude Vision")
+            except Exception as e:
+                logger.error(f"Failed to detect joist measurements: {e}")
+        
+        # Step 6: Generate assumptions
+        assumptions = self._generate_assumptions(scale_result, joists, joist_patterns)
         
         return {
             'scale': scale_result,
             'joists': joists,
+            'joist_patterns': joist_patterns,
+            'joist_measurements': joist_measurements,
             'assumptions': assumptions,
             'text_data': text_data  # For debugging
         }
@@ -324,7 +386,7 @@ class HybridPDFAnalyzer:
         
         return details
     
-    def _generate_assumptions(self, scale: ScaleDetectionResult, joists: List[JoistDetection]) -> List[AnalysisAssumption]:
+    def _generate_assumptions(self, scale: ScaleDetectionResult, joists: List[JoistDetection], joist_patterns: List[JoistPattern]) -> List[AnalysisAssumption]:
         """
         Generate assumptions for user validation
         """
@@ -373,6 +435,18 @@ class HybridPDFAnalyzer:
                 value=f'Text labels found: {len(joists)} joists',
                 confidence=85.0,
                 source='text',
+                editable=False
+            ))
+        
+        # Joist pattern detection assumption
+        if joist_patterns:
+            assumptions.append(AnalysisAssumption(
+                id='pattern-2',
+                category='joist',
+                description='Joist Pattern Detection',
+                value=f'Cross-patterns found: {len(joist_patterns)} patterns (J1A-{chr(ord("A") + len(joist_patterns) - 1)})',
+                confidence=min(p.confidence for p in joist_patterns) if joist_patterns else 0,
+                source='vision',
                 editable=False
             ))
             
