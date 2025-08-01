@@ -8,7 +8,24 @@ CheckMeasureAI is an AI-powered construction material calculation assistant desi
 
 ## Development Commands
 
-### Backend Development
+### Quick Start (Recommended)
+
+```bash
+# Start both backend and frontend servers with one command
+./scripts/dev.sh
+
+# This will:
+# - Check if ports are already in use
+# - Start backend on http://localhost:8000
+# - Start frontend on http://localhost:3000
+# - Handle cleanup on Ctrl+C
+# - Show clear status messages
+
+# Stop all servers cleanly
+./scripts/stop.sh
+```
+
+### Manual Server Start (Alternative)
 
 ```bash
 cd backend

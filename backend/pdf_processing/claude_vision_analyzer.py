@@ -1367,67 +1367,39 @@ Look carefully at the drawing and provide your analysis:"""
         prompts = {
             "joist": """You are analyzing a specific area marked by a user that contains joist specifications.
 
-**PRIMARY GOAL: Detect and measure standard components for automatic calibration**
-
 Focus on this marked area and identify:
 
-1. **CRITICAL - Standard Components for Calibration**:
-   - **Steel Sections**: Look for "200PFC", "200UB25", "250UB31", etc.
-     - MEASURE their visible dimensions in pixels (depth, flange width)
-     - These have KNOWN dimensions: 200PFC = 200mm deep × 75mm flange
-   - **Timber/LVL Sizes**: Look for "200x45", "150x45 LVL", etc.
-     - MEASURE their width and/or depth in pixels
-     - Format: width × depth (e.g., 200x45 = 200mm × 45mm)
-   - **Spacing Patterns**: "450 CTS", "300 CTS", "@450", etc.
-     - MEASURE the actual spacing between elements in pixels
-
-2. **Joist Information**:
-   - Labels like "J1", "J2", "J3"
-   - Full specifications (e.g., "200 x 45 LVL at 450 centres")
+1. **Joist Information**:
+   - Labels like "J1", "J2", "J3", etc.
+   - Material specifications (e.g., "200 x 45 LVL", "150 x 45 MGP10")
+   - Spacing information (e.g., "at 450 centres", "@600 CTS")
    - Any span or dimension measurements
+
+2. **Structural Details**:
+   - Joist type and size
+   - Material grade
+   - Spacing between joists
+   - Any blocking or support requirements
 
 Return your analysis as JSON:
 ```json
 {
   "detected_elements": [
     {
-      "label": "200x45",
-      "type": "timber",
-      "confidence": 0.95,
-      "measurements": {
-        "width_pixels": 85,
-        "height_pixels": 19,
-        "spacing_pixels": 190
-      },
-      "specification": "200 x 45 LVL at 450 centres"
-    },
-    {
       "label": "J1",
       "type": "joist",
       "confidence": 0.95,
-      "measurements": {
-        "width_mm": 200,
-        "depth_mm": 45,
-        "material": "LVL",
-        "spacing_mm": 450
-      }
+      "specification": "200 x 45 LVL at 450 centres",
+      "material": "LVL",
+      "size": "200x45",
+      "spacing": "450mm"
     }
   ],
-  "calibration_candidates": [
-    {
-      "component": "200x45 timber",
-      "measured_pixels": 85,
-      "expected_mm": 200,
-      "pixels_per_mm": 0.425
-    }
-  ],
-  "span_measurements": ["3.386m", "450mm"],
+  "span_measurements": ["3.386m", "4.872m"],
   "confidence": 0.90,
-  "reasoning": "Found 200x45 LVL with measurable dimensions for calibration"
+  "reasoning": "Found J1 joist specification with 200x45 LVL at 450mm centres"
 }
-```
-
-**IMPORTANT**: Accurate pixel measurements are critical for calibration!""",
+```""",
             
             "beam": """You are analyzing a specific area marked by a user that contains beam specifications.
 
@@ -1459,24 +1431,22 @@ Focus ONLY on this marked area and identify:
 
 Return your analysis as JSON with rafter-specific information.""",
             
-            "general": """You are analyzing a construction drawing area focusing on standard components for automatic calibration.
+            "general": """You are analyzing a construction drawing area.
 
-**PRIMARY GOAL: Detect and measure standard components**
+Focus on identifying:
 
-1. **Steel Sections**: "200PFC", "200UB25", "250UB31" etc. - MEASURE in pixels
-2. **Timber Sizes**: "200x45", "150x45 LVL" etc. - MEASURE in pixels  
-3. **Spacing Patterns**: "450 CTS", "@450" etc. - MEASURE spacing in pixels
-4. **Other Elements**: Any structural elements, dimensions, or specifications
+1. **Structural Elements**: Any beams, joists, columns, or other members
+2. **Material Specifications**: Sizes, grades, and types
+3. **Dimensions**: Spans, spacings, or other measurements
+4. **Labels**: Reference codes or identifiers
 
-Return as JSON with detected_elements array including pixel measurements for calibration."""
+Return as JSON with detected_elements array."""
         }
         
         return prompts.get(calculation_type, prompts["general"])  # Default to general
     
     def _combine_area_results(self, area_results: List[Dict], processing_time: float, total_cost: float) -> Dict[str, Any]:
         """Combine multiple area analysis results into unified response"""
-        from .calibration import AutoCalibrator
-        
         successful_results = [r for r in area_results if r.get("success", False)]
         
         all_elements = []
@@ -1500,25 +1470,6 @@ Return as JSON with detected_elements array including pixel measurements for cal
         
         overall_confidence = sum(confidences) / len(confidences) if confidences else 0.0
         
-        # Log elements before calibration
-        log_info(f"Attempting auto-calibration with {len(all_elements)} total elements", "claude_vision.auto_calibration")
-        for i, elem in enumerate(all_elements):
-            log_info(f"Calibration input element {i}: {elem}", "claude_vision.auto_calibration")
-        
-        # Perform auto-calibration using detected elements
-        calibrator = AutoCalibrator()
-        calibration_result = calibrator.auto_calibrate(all_elements)
-        
-        # Log calibration results
-        if calibration_result.status == "auto_calibrated":
-            log_info(
-                f"Auto-calibration successful: {calibration_result.pixels_per_mm:.3f} px/mm "
-                f"using {calibration_result.method.value} with confidence {calibration_result.confidence:.2f}",
-                "claude_vision.auto_calibration"
-            )
-        else:
-            log_warning(f"Auto-calibration failed with status: {calibration_result.status}, method: {calibration_result.method.value}", "claude_vision.auto_calibration")
-        
         return {
             "area_analysis_results": area_results,
             "detected_elements": all_elements,
@@ -1527,16 +1478,7 @@ Return as JSON with detected_elements array including pixel measurements for cal
             "processing_time_ms": processing_time,
             "total_cost_estimate_usd": total_cost,
             "successful_areas": len(successful_results),
-            "total_areas": len(area_results),
-            "calibration": {
-                "method": calibration_result.method.value,
-                "status": calibration_result.status,
-                "pixels_per_mm": calibration_result.pixels_per_mm,
-                "mm_per_pixel": calibration_result.mm_per_pixel,
-                "confidence": calibration_result.confidence,
-                "reference_components": calibration_result.reference_components,
-                "details": calibration_result.calibration_details
-            }
+            "total_areas": len(area_results)
         }
 
     def create_form_data_from_result(self, result: ClaudeVisionResult) -> Dict[str, Any]:

@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import pytesseract
-import easyocr
 from PIL import Image, ImageEnhance, ImageFilter
 import fitz  # PyMuPDF
 import tempfile
@@ -217,12 +216,9 @@ class AdvancedPDFAnalyzer:
     
     def _initialize_ocr(self):
         """Initialize OCR engines"""
-        try:
-            # Initialize EasyOCR (supports multiple languages)
-            self.easyocr_reader = easyocr.Reader(['en'])
-            logger.info("EasyOCR initialized successfully")
-        except Exception as e:
-            logger.warning(f"Failed to initialize EasyOCR: {e}")
+        # Lazy load EasyOCR - will be initialized on first use
+        self.easyocr_reader = None
+        logger.info("OCR initialization deferred for faster startup")
     
     def analyze_pdf_advanced(self, pdf_content: bytes) -> Dict:
         """Comprehensive PDF analysis using multiple methods"""
@@ -382,8 +378,16 @@ class AdvancedPDFAnalyzer:
         extracted_text = []
         
         try:
+            # Lazy load EasyOCR on first use
             if self.easyocr_reader is None:
-                return extracted_text
+                try:
+                    logger.info("Lazy loading EasyOCR (this may take a moment on first use)...")
+                    import easyocr
+                    self.easyocr_reader = easyocr.Reader(['en'])
+                    logger.info("EasyOCR loaded successfully")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize EasyOCR: {e}")
+                    return extracted_text
             
             # EasyOCR expects RGB format
             if len(image.shape) == 3:

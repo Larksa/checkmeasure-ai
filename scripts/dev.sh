@@ -3,6 +3,19 @@
 echo "🚀 Starting CheckMeasureAI Development Servers"
 echo "=============================================="
 
+# Check if ports are already in use
+PORT_8000=$(lsof -ti:8000 2>/dev/null)
+PORT_3000=$(lsof -ti:3000 2>/dev/null)
+
+if [ ! -z "$PORT_8000" ] || [ ! -z "$PORT_3000" ]; then
+    echo "⚠️  Ports already in use!"
+    [ ! -z "$PORT_8000" ] && echo "   Port 8000: PID $PORT_8000"
+    [ ! -z "$PORT_3000" ] && echo "   Port 3000: PID $PORT_3000"
+    echo ""
+    echo "Run './scripts/stop.sh' to stop existing servers"
+    exit 1
+fi
+
 # Function to kill background processes on script exit
 cleanup() {
     echo ""
@@ -22,16 +35,20 @@ python3 main.py &
 BACKEND_PID=$!
 echo "Backend PID: $BACKEND_PID"
 
-# Wait for backend to start
-sleep 3
-
-# Check if backend is running
-if curl -s http://localhost:8000/health > /dev/null; then
-    echo "✅ Backend started successfully"
-else
-    echo "❌ Backend failed to start"
-    exit 1
-fi
+# Wait for backend to start with retries
+echo "⏳ Waiting for backend to start..."
+for i in {1..10}; do
+    if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+        echo "✅ Backend started successfully"
+        break
+    fi
+    if [ $i -eq 10 ]; then
+        echo "❌ Backend failed to start after 10 seconds"
+        echo "Check backend logs for errors"
+        exit 1
+    fi
+    sleep 1
+done
 
 # Start frontend
 echo ""

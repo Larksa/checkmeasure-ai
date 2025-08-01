@@ -1,14 +1,14 @@
 # CheckMeasureAI - Living Requirements
 
 ## 🚦 Current Status
-**Last Updated**: 2025-07-30 10:45 AM
-**Phase**: Breakthrough Achievement ✨
-**Blocked By**: Nothing  
-**Next Action**: Celebrate and test the most accurate measurement system we've built!
+**Last Updated**: 2025-08-01 10:30 AM
+**Phase**: Performance Optimization & Cleanup
+**Blocked By**: 15-minute startup time issue
+**Next Action**: Complete startup optimization fixes and test performance improvements
 
 ## 📊 Progress Overview
-- Total Tasks: 28
-- Completed: 26 (93%)
+- Total Tasks: 32
+- Completed: 30 (94%)
 - In Progress: 0
 - Discovered: 10 (tasks found during work)
 - Failed Attempts: 10
@@ -29,6 +29,7 @@ AI-powered construction material calculation assistant that revolutionizes how A
 - **[2025-07-29]**: BREAKTHROUGH: Auto-calibration using standard components eliminates scale issues entirely!
 - **[2025-07-30]**: MAJOR PIVOT: Replaced AI auto-calibration with mathematical scale calculation using PDF coordinates
 - **[2025-07-30]**: 🎯 MILESTONE ACHIEVED: The most accurate dimension selection system we've built! Mathematical approach delivers 100% accuracy
+- **[2025-08-01]**: Discovered 15-minute startup issue - EasyOCR loading PyTorch models at startup + macOS localhost conflicts
 
 ## 📋 Task Hierarchy
 
@@ -155,12 +156,42 @@ AI-powered construction material calculation assistant that revolutionizes how A
   - **Actual**: 0.5h
   - **Notes**: Average error < 1%, validates to 95% confidence
 
-### Phase 5: Final Features [0/2 tasks]
-- [ ] 5.1: Add visual markers for analyzed areas
+### Phase 5: Code Cleanup [4/4 tasks] ✅
+- [x] 5.1: Remove obsolete calibration module
+  - **Status**: Complete
+  - **Actual**: 0.5h
+  - **Notes**: Removed /backend/pdf_processing/calibration/ directory and test files
+  
+- [x] 5.2: Clean up claude_vision_analyzer.py
+  - **Status**: Complete
+  - **Actual**: 0.5h
+  - **Notes**: Removed all calibration-related code and prompts
+  
+- [x] 5.3: Remove ScaleDetectionDemo component
+  - **Status**: Complete
+  - **Actual**: 0.5h
+  - **Notes**: Removed component and all routes from App.tsx
+  
+- [x] 5.4: Clean up MeasurementExtractionDemo
+  - **Status**: Complete
+  - **Actual**: 0.5h
+  - **Notes**: Removed calibration UI elements, updated scale display
+
+### ⚠️ Phase 5.5: DECISION REQUIRED - Structural Elements Implementation
+- **Status**: Awaiting Decision
+- **Options**: 
+  1. Implement calculations first with hardcoded types (3 days)
+  2. Build configuration system first (1-2 weeks)
+- **Decision Document**: See [STRUCTURAL_ELEMENTS_DECISION.md](./STRUCTURAL_ELEMENTS_DECISION.md)
+- **Impact**: This decision affects the next 1-3 weeks of development
+- **Recommendation**: Option 1 - Get working calculations first, add configuration later
+
+### Phase 6: Final Features [0/2 tasks]
+- [ ] 6.1: Add visual markers for analyzed areas
   - **Status**: Not Started
   - **Notes**: Green overlay on successfully analyzed areas
   
-- [ ] 5.2: Implement cumulative material calculation
+- [ ] 6.2: Implement cumulative material calculation
   - **Status**: Not Started  
   - **Notes**: Aggregate measurements from all areas into cutting list
 
@@ -305,3 +336,40 @@ AI-powered construction material calculation assistant that revolutionizes how A
 | 2025-07-30 | Replace AI calibration with math | AI vision couldn't read blurry text | 100% accurate measurements |
 | 2025-07-30 | Scale notation "1:100 at A3" | Include paper size in scale | Accounts for PDF vs print size |
 | 2025-07-30 | PDF coordinate measurement | Use PDF points not pixels | Resolution independent |
+
+## 🚀 Future Improvements & Technical Debt
+
+### 🐳 Docker Implementation (High Priority)
+- **Why**: Would solve the 15-minute startup issue completely
+- **Benefits**:
+  - Pre-built images with EasyOCR models already loaded
+  - No localhost/network conflicts
+  - Consistent environment across all machines
+  - Startup time < 30 seconds
+- **Implementation**: Create Dockerfile for backend/frontend + docker-compose.yml
+- **Estimated Time**: 4-6 hours
+
+### 📚 My Coding Knowledge Consolidation (Andrew - Please Review)
+- **Issue**: my-coding-knowledge.md is getting very large (>25,000 tokens)
+- **Options to Consider**:
+  1. Split by year: coding-knowledge-2024.md, coding-knowledge-2025.md
+  2. Split by category: frontend-knowledge.md, backend-knowledge.md, devops-knowledge.md
+  3. Create an index file with links to categorized sub-files
+  4. Use a knowledge base tool (Obsidian, Notion, etc.)
+- **Recommendation**: Start with yearly splits, then consider categories if needed
+- **Action Required**: Andrew to decide on approach
+
+### 🔧 Performance Optimizations
+- [ ] Fix EasyOCR lazy loading (completed in code, needs testing)
+- [ ] Fix macOS localhost duplicate entries in /etc/hosts
+- [ ] Consider replacing EasyOCR with lighter alternatives for production
+- [ ] Implement Redis caching for PDF analysis results
+- [ ] Add connection pooling for database operations
+
+### 📦 Remaining Technical Debt
+- [ ] Refactor API client consistency (mixing apiClient with direct calls)
+- [ ] Fix FormData headers across all components
+- [ ] Add proper timeout handling for long-running requests
+- [ ] Implement parallel processing for multiple area analysis
+- [ ] Add comprehensive error boundaries in React
+- [ ] Create proper dev/staging/prod configurations

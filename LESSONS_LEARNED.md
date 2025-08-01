@@ -236,10 +236,26 @@
   - Works with ANY PDF quality (no blurry image issues)
   - This is the most accurate dimension selection system we've built!
 
+## Cleanup and Refactoring
+
+- **Issue**: Obsolete AI calibration code after pivot to mathematical approach
+  - **Time to solve**: 2 hours
+  - **Solution**: Systematic removal of calibration module, test files, and UI components
+  - **Reusable pattern?**: Yes - clean removal of deprecated features
+  - **Knowledge bank**: Code cleanup workflow
+
+### Cleanup Tasks Completed:
+1. Removed `/backend/pdf_processing/calibration/` directory
+2. Removed `/backend/test_auto_calibration.py`
+3. Cleaned calibration code from `claude_vision_analyzer.py`
+4. Removed ScaleDetectionDemo component and routes
+5. Updated MeasurementExtractionDemo to remove calibration UI
+6. Updated scale display to reflect mathematical approach
+
 ## Knowledge Bank Contributions
 
 - Patterns used: 8 (FastAPI structure, React components, error handling, API integration, multi-agent, defensive coding, manual overrides, PDF coordinates)
-- New patterns contributed: 7 (Claude Vision, PDF analysis, multi-level fallback, manual override, defensive null checking, auto-calibration, mathematical scale calculation)
+- New patterns contributed: 8 (Claude Vision, PDF analysis, multi-level fallback, manual override, defensive null checking, auto-calibration, mathematical scale calculation, code cleanup workflow)
 - Gotchas documented: 10 (token limits, coordinates, DPI, package imports, FormData, null values, dict keys, UI states, logging imports, scale notation)
-- Skills developed: 8 (Claude Vision, PyMuPDF, FastAPI, construction standards, multi-agent, defensive programming, auto-calibration, PDF coordinate systems)
-- Workflows documented: 3 (PDF analysis, error debugging, scale calculation)
+- Skills developed: 9 (Claude Vision, PyMuPDF, FastAPI, construction standards, multi-agent, defensive programming, auto-calibration, PDF coordinate systems, technical debt removal)
+- Workflows documented: 4 (PDF analysis, error debugging, scale calculation, code cleanup)

@@ -16,15 +16,6 @@ interface ScaleResult {
   confidence: number;
   method: string;
   source_text?: string;
-  calibration?: {
-    method: string;
-    status: string;
-    pixels_per_mm: number;
-    mm_per_pixel: number;
-    confidence: number;
-    reference_components: string[];
-    details: any;
-  };
 }
 
 interface MeasuredArea {
@@ -43,7 +34,6 @@ interface MeasuredArea {
     height_m: number;
     confidence: number;
   };
-  calibrationMethod?: string;
   scaleUsed?: string;  // Added for new scale system
   status: 'pending' | 'analyzing' | 'success' | 'error';
   statusMessage?: string;
@@ -444,25 +434,23 @@ const MeasurementExtractionDemo: React.FC = () => {
               </div>
               
               {/* Scale Information */}
-              {scale.scale_notation && (
-                <div style={{ marginTop: 16, padding: 12, background: '#f0f8ff', borderRadius: 4 }}>
-                  <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                    <Space>
-                      <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                      <Text strong>Scale Set</Text>
-                    </Space>
-                    <Text type="secondary">
-                      Scale: {scale.scale_notation || scale.scale_ratio}
-                    </Text>
-                    <Text type="secondary">
-                      Method: Mathematical calculation based on PDF dimensions
-                    </Text>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      Measurements will be calculated using PDF coordinates and scale notation
-                    </Text>
+              <div style={{ marginTop: 16, padding: 12, background: '#f0f8ff', borderRadius: 4 }}>
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  <Space>
+                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                    <Text strong>Scale Configuration</Text>
                   </Space>
-                </div>
-              )}
+                  <Text type="secondary">
+                    Scale: {scale.scale_notation || scale.scale_ratio}
+                  </Text>
+                  <Text type="secondary">
+                    Method: {scale.method === 'manual' ? 'Manually specified' : 'Mathematical calculation'}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Using PDF coordinate system (1 point = 0.3528 mm) with scale notation
+                  </Text>
+                </Space>
+              </div>
             </Card>
           )}
 
@@ -515,9 +503,9 @@ const MeasurementExtractionDemo: React.FC = () => {
                         <Text type="secondary">
                           Confidence: {(area.measurements.confidence * 100).toFixed(0)}%
                         </Text>
-                        {area.calibrationMethod && (
+                        {area.scaleUsed && (
                           <Text type="secondary" style={{ fontSize: 12 }}>
-                            Calibrated via: {area.calibrationMethod.replace('_', ' ')}
+                            Scale used: {area.scaleUsed}
                           </Text>
                         )}
                       </>

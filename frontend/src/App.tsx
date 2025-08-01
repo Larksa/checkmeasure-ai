@@ -30,7 +30,6 @@ import CalculationPanel from './components/CalculationPanel';
 import ResultsDisplay from './components/ResultsDisplay';
 import AgentDashboard from './components/agents/AgentDashboard';
 import AgentControlPanel from './components/agents/AgentControlPanel';
-import ScaleDetectionDemo from './components/ScaleDetectionDemo';
 import MeasurementExtractionDemo from './components/MeasurementExtractionDemo';
 import { apiClient } from './utils/api';
 
@@ -39,7 +38,7 @@ const { Title, Text } = Typography;
 const { Dragger } = Upload;
 const { TabPane } = Tabs;
 
-type ViewMode = 'traditional' | 'multi-agent' | 'dashboard' | 'control' | 'scale-detection' | 'measurement-extraction';
+type ViewMode = 'traditional' | 'multi-agent' | 'dashboard' | 'control' | 'measurement-extraction';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewMode>('traditional');
@@ -225,11 +224,6 @@ const App: React.FC = () => {
       label: 'Agent Control',
     },
     {
-      key: 'scale-detection',
-      icon: <ExperimentOutlined />,
-      label: 'Scale Detection (Beta)',
-    },
-    {
       key: 'measurement-extraction',
       icon: <FileSearchOutlined />,
       label: 'Measurement Extraction',
@@ -378,8 +372,6 @@ const App: React.FC = () => {
         return <AgentDashboard key={dashboardKey} />;
       case 'control':
         return <AgentControlPanel onRefresh={refreshDashboard} />;
-      case 'scale-detection':
-        return <ScaleDetectionDemo />;
       case 'measurement-extraction':
         return <MeasurementExtractionDemo />;
       default:
