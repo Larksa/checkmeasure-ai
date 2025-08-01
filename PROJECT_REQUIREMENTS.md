@@ -485,3 +485,20 @@ We discovered that Claude Vision was being used unnecessarily:
 - **Simplicity**: Removed ~500 lines of unnecessary code
 - **Cost**: $0 (was using Claude Vision API)
 - **User Experience**: Much better - instant feedback
+
+### Cutting List Decimal Display Fix (2025-08-01)
+
+#### The Problem
+- Cutting list was showing rounded values (e.g., 3.6m displayed as "4m")
+- Using `:.0f` format removed decimal places in display
+- Actual calculations were correct, only display was wrong
+
+#### The Solution
+- Changed format strings from `:.0f` to `:.1f` in:
+  - enhanced_joist_calculator.py (6 locations)
+  - base_calculator.py (1 location)
+
+#### Results
+- ✅ Cutting list now shows exact lengths: 3.6m, 4.2m, 4.8m, etc.
+- ✅ No more confusion about what's being ordered
+- ✅ Display matches actual standard timber lengths
