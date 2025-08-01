@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Layout, 
   Menu, 
@@ -32,6 +32,7 @@ import AgentDashboard from './components/agents/AgentDashboard';
 import AgentControlPanel from './components/agents/AgentControlPanel';
 import MeasurementExtractionDemo from './components/MeasurementExtractionDemo';
 import { apiClient } from './utils/api';
+import api from './utils/api';
 
 const { Header, Content, Sider } = Layout;
 const { Title, Text } = Typography;
@@ -48,6 +49,49 @@ const App: React.FC = () => {
   const [results, setResults] = useState<any>(null);
   const [selections, setSelections] = useState<any[]>([]);
   const [dashboardKey, setDashboardKey] = useState(0);
+  const [backendHealthy, setBackendHealthy] = useState(true);
+
+  // Keep-alive mechanism to prevent backend idle timeout
+  useEffect(() => {
+    let keepAliveInterval: NodeJS.Timeout;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 3;
+
+    const checkBackendHealth = async () => {
+      try {
+        await api.get('/health');
+        if (!backendHealthy) {
+          setBackendHealthy(true);
+          message.success('Backend connection restored');
+          reconnectAttempts = 0;
+        }
+      } catch (error) {
+        console.error('Backend health check failed:', error);
+        setBackendHealthy(false);
+        
+        // Try to reconnect a few times before giving up
+        if (reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++;
+          message.warning(`Backend connection lost. Retrying... (${reconnectAttempts}/${maxReconnectAttempts})`);
+        } else {
+          message.error('Backend connection lost. Please refresh the page or restart the server.');
+        }
+      }
+    };
+
+    // Initial health check
+    checkBackendHealth();
+
+    // Set up keep-alive interval - ping every 15 seconds to prevent timeouts
+    keepAliveInterval = setInterval(() => {
+      checkBackendHealth();
+    }, 15000);
+
+    // Cleanup on unmount
+    return () => {
+      clearInterval(keepAliveInterval);
+    };
+  }, [backendHealthy]);
 
   const uploadProps: UploadProps = {
     name: 'file',
@@ -395,7 +439,12 @@ const App: React.FC = () => {
             CheckMeasureAI
           </Title>
         </div>
-        <Badge count="AI Enhanced" color="#52c41a" />
+        <Space>
+          {!backendHealthy && (
+            <Badge count="Backend Offline" color="#ff4d4f" />
+          )}
+          <Badge count="AI Enhanced" color="#52c41a" />
+        </Space>
       </Header>
       
       <Layout>

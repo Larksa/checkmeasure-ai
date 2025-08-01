@@ -31,7 +31,15 @@ trap cleanup SIGINT SIGTERM EXIT
 echo ""
 echo "🐍 Starting Backend (Port 8000)..."
 cd backend
-python3 main.py &
+# Use explicit uvicorn command with all settings
+python3 -m uvicorn main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --timeout-keep-alive 0 \
+    --timeout-graceful-shutdown 0 \
+    --workers 1 \
+    --loop asyncio \
+    --log-level info &
 BACKEND_PID=$!
 echo "Backend PID: $BACKEND_PID"
 

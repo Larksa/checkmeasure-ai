@@ -9,6 +9,7 @@ from utils.error_logger import error_logger, log_error, log_warning, log_info
 import traceback
 import logging
 import json
+import gc  # Garbage collection
 import fitz  # PyMuPDF
 
 # Try to import advanced modules with error handling
@@ -371,7 +372,17 @@ async def debug_joist_detection(file: UploadFile = File(...)):
 
 @router.post("/analyze-advanced")
 async def analyze_pdf_advanced(file: UploadFile = File(...)):
-    """Advanced PDF analysis using OCR, computer vision, and multi-method extraction"""
+    """DISABLED - Advanced PDF analysis using OCR, computer vision, and multi-method extraction
+    
+    This endpoint has been disabled because:
+    1. Computer vision libraries (EasyOCR, OpenCV) were causing process death
+    2. Current workflow doesn't use AI analysis - users manually select areas
+    3. Simple math-based approach is more reliable and faster
+    """
+    raise HTTPException(
+        status_code=501, 
+        detail="Advanced CV analysis disabled - use /calculate-dimensions for math-based measurement"
+    )
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="File must be a PDF")
     
@@ -403,7 +414,15 @@ async def analyze_pdf_advanced(file: UploadFile = File(...)):
 
 @router.post("/detect-joists-advanced")
 async def detect_joists_advanced(file: UploadFile = File(...)):
-    """Advanced joist detection using multiple methods (OCR, CV, pattern matching)"""
+    """DISABLED - Advanced joist detection using multiple methods (OCR, CV, pattern matching)
+    
+    This endpoint has been disabled because computer vision libraries were causing process death.
+    Use manual area selection with /calculate-dimensions instead.
+    """
+    raise HTTPException(
+        status_code=501, 
+        detail="Advanced joist detection disabled - use manual area selection"
+    )
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="File must be a PDF")
     
@@ -447,7 +466,15 @@ async def detect_joists_advanced(file: UploadFile = File(...)):
 
 @router.post("/auto-populate-advanced")
 async def auto_populate_form_advanced(file: UploadFile = File(...)):
-    """Auto-populate calculation form using advanced detection methods"""
+    """DISABLED - Auto-populate calculation form using advanced detection methods
+    
+    This endpoint has been disabled because it relies on computer vision libraries
+    that were causing memory pressure and process death. Use manual input instead.
+    """
+    raise HTTPException(
+        status_code=501, 
+        detail="Auto-populate disabled - use manual form input"
+    )
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="File must be a PDF")
     
@@ -1516,3 +1543,5 @@ async def calculate_dimensions(
     finally:
         if pdf_doc:
             pdf_doc.close()
+        # Force garbage collection to free memory
+        gc.collect()

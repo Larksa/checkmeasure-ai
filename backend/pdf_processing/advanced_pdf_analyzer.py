@@ -1,7 +1,19 @@
-import cv2
-import numpy as np
-import pytesseract
-from PIL import Image, ImageEnhance, ImageFilter
+# Computer vision libraries - optional imports to prevent process death
+try:
+    import cv2
+    import numpy as np
+    import pytesseract
+    from PIL import Image, ImageEnhance, ImageFilter
+    from sklearn.cluster import DBSCAN
+    from scipy.spatial.distance import euclidean
+    CV_AVAILABLE = True
+except ImportError as e:
+    # These libraries are not needed for current workflow (no Claude Vision)
+    # They were causing memory pressure and process death
+    CV_AVAILABLE = False
+    # Create dummy objects to prevent errors
+    np = None
+
 import fitz  # PyMuPDF
 import tempfile
 import os
@@ -9,8 +21,6 @@ import logging
 from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
 import re
-from sklearn.cluster import DBSCAN
-from scipy.spatial.distance import euclidean
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
