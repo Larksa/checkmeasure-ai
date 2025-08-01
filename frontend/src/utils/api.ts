@@ -36,6 +36,28 @@ export const apiClient = {
   calculateJoists: (request: JoistCalculationRequest) => 
     api.post<JoistCalculationResponse>('/api/calculations/joists', request),
   
+  // Generic calculation endpoint
+  calculate: (elementCode: string, dimensions: Record<string, number>, options?: any) =>
+    api.post('/api/calculations/calculate', {
+      element_code: elementCode,
+      dimensions,
+      options
+    }),
+  
+  // Element types API
+  getElementTypes: (activeOnly: boolean = true, category?: string) => {
+    const params = new URLSearchParams();
+    params.append('active_only', activeOnly.toString());
+    if (category) params.append('category', category);
+    return api.get(`/api/calculations/element-types?${params.toString()}`);
+  },
+  
+  getElementType: (code: string) => 
+    api.get(`/api/calculations/element-types/${code}`),
+  
+  getCategories: () => 
+    api.get<string[]>('/api/calculations/categories'),
+  
   // PDF Processing API
   uploadPDF: (file: File) => {
     const formData = new FormData();

@@ -1,3 +1,22 @@
+"""
+LEGACY MODULE - NOT USED IN CURRENT WORKFLOW
+============================================
+
+This module contains Claude Vision API integration for AI-powered PDF analysis.
+It was used to detect joist labels and measurements from architectural drawings.
+
+CURRENT WORKFLOW (as of 2025-08-01):
+- Users manually select areas with mouse
+- Users manually select element types (J1, J2, etc.) from dropdown
+- System calculates dimensions using mathematical scale conversion
+- No AI/Claude Vision needed
+
+This code is kept for potential future use cases where AI detection might be valuable.
+
+Original purpose: Automatic detection of structural elements in PDFs
+Status: Replaced by user-driven selection + mathematical calculation
+"""
+
 import base64
 import fitz  # PyMuPDF
 import io
@@ -358,8 +377,12 @@ class ClaudeVisionAnalyzer:
         if not self.api_key:
             raise ValueError("Anthropic API key not provided. Set ANTHROPIC_API_KEY environment variable.")
         
-        # Initialize Anthropic client
-        self.client = anthropic.Anthropic(api_key=self.api_key)
+        # Initialize Anthropic client with custom timeout
+        self.client = anthropic.Anthropic(
+            api_key=self.api_key,
+            timeout=90.0,  # 90 second timeout
+            max_retries=2   # Retry failed requests twice
+        )
         
         # Model configuration
         self.model = "claude-3-5-sonnet-20241022"  # Latest model with vision
@@ -562,6 +585,7 @@ Return as JSON:
     def _convert_pdf_to_images(self, pdf_content: bytes) -> List[Tuple[bytes, int]]:
         """Convert PDF pages to optimized images for Claude Vision"""
         images = []
+        pdf_doc = None
         
         try:
             # Open PDF from bytes
@@ -598,12 +622,14 @@ Return as JSON:
                                       "file_size_kb": len(optimized_bytes) / 1024
                                   })
             
-            pdf_doc.close()
             return images
             
         except Exception as e:
             log_error(e, "claude_vision_analyzer._convert_pdf_to_images")
             raise e
+        finally:
+            if pdf_doc:
+                pdf_doc.close()
     
     def _optimize_image_for_claude(self, pil_image: Image.Image) -> bytes:
         """Optimize PIL image for Claude Vision API"""
@@ -1062,6 +1088,21 @@ Look carefully at the drawing and provide your analysis:"""
         except Exception:
             return None
     
+    def _make_api_call_with_retry(self, messages, max_retries=3):
+        """Make API call with retry logic for connection errors"""
+        for attempt in range(max_retries):
+            try:
+                return self.client.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    messages=messages
+                )
+            except Exception as e:
+                log_warning(f"API call attempt {attempt + 1} failed: {str(e)}", "claude_vision.api_retry")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(2 ** attempt)  # Exponential backoff
+    
     def analyze_selected_areas(self, pdf_content: bytes, selection_areas: List[Dict], scale_factor: Optional[float] = None) -> Dict[str, Any]:
         """Analyze specific areas marked by user with Claude Vision"""
         start_time = time.time()
@@ -1211,6 +1252,8 @@ Look carefully at the drawing and provide your analysis:"""
     
     def _convert_single_page_to_image(self, pdf_content: bytes, page_number: int) -> Optional[bytes]:
         """Convert a single PDF page to an optimized image for Claude Vision"""
+        pdf_doc = None
+        
         try:
             # Open PDF from bytes
             pdf_doc = fitz.open(stream=pdf_content, filetype="pdf")
@@ -1241,14 +1284,14 @@ Look carefully at the drawing and provide your analysis:"""
             # Convert to PNG bytes
             img_bytes = pix.tobytes("png")
             
-            # Clean up
-            pdf_doc.close()
-            
             return img_bytes
             
         except Exception as e:
             log_error(e, "claude_vision_analyzer._convert_single_page_to_image")
             return None
+        finally:
+            if pdf_doc:
+                pdf_doc.close()
     
     def _crop_area_from_single_image(self, page_image: bytes, area: Dict) -> Optional[bytes]:
         """Crop specific area from a single page image"""
@@ -1311,16 +1354,12 @@ Look carefully at the drawing and provide your analysis:"""
                 }
             ]
             
-            # Send request to Claude
+            # Send request to Claude with retry logic
             start_time = time.time()
-            message = self.client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                messages=[{
-                    "role": "user",
-                    "content": content_blocks
-                }]
-            )
+            message = self._make_api_call_with_retry([{
+                "role": "user",
+                "content": content_blocks
+            }])
             
             api_time = (time.time() - start_time) * 1000
             

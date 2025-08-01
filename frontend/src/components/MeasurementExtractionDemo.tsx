@@ -4,7 +4,7 @@ import { UploadOutlined, FileSearchOutlined, EditOutlined, CheckOutlined, Select
 import type { UploadFile } from 'antd/es/upload/interface';
 import PDFViewer from './pdf-viewer/PDFViewer';
 import { useAppStore } from '../stores/appStore';
-import api from '../utils/api';
+import api, { apiClient } from '../utils/api';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -22,6 +22,7 @@ interface MeasuredArea {
   id: string;
   label: string;
   detectedLabel?: string;
+  elementType?: string;  // Selected element type
   selection: {
     x: number;
     y: number;
@@ -35,8 +36,18 @@ interface MeasuredArea {
     confidence: number;
   };
   scaleUsed?: string;  // Added for new scale system
+  calculationResult?: any;  // Results from calculation endpoint
   status: 'pending' | 'analyzing' | 'success' | 'error';
   statusMessage?: string;
+}
+
+interface ElementTypeInfo {
+  code: string;
+  description: string;
+  category: string;
+  calculator_type: string;
+  specification: any;
+  active: boolean;
 }
 
 const MeasurementExtractionDemo: React.FC = () => {
@@ -50,6 +61,10 @@ const MeasurementExtractionDemo: React.FC = () => {
   const [labelInput, setLabelInput] = useState('');
   const [manualScaleMode, setManualScaleMode] = useState(false);
   const [selectedPresetScale, setSelectedPresetScale] = useState<string>('1:100 at A3');
+  const [elementTypes, setElementTypes] = useState<ElementTypeInfo[]>([]);
+  const [selectedElementType, setSelectedElementType] = useState<string>('J1');
+  const [showCalculation, setShowCalculation] = useState(false);
+  const [consolidatedList, setConsolidatedList] = useState<string>('');
   
   const { 
     isSelecting, 
@@ -57,6 +72,21 @@ const MeasurementExtractionDemo: React.FC = () => {
     selectionAreas, 
     clearSelectionAreas 
   } = useAppStore();
+
+  // Load element types on component mount
+  React.useEffect(() => {
+    loadElementTypes();
+  }, []);
+
+  const loadElementTypes = async () => {
+    try {
+      const response = await apiClient.getElementTypes();
+      setElementTypes(response.data);
+    } catch (error) {
+      console.error('Failed to load element types:', error);
+      message.error('Failed to load element types');
+    }
+  };
 
   // Common architectural scales with paper size notation
   const commonScales = [
@@ -71,33 +101,7 @@ const MeasurementExtractionDemo: React.FC = () => {
     { value: 'custom', label: 'Custom...' }
   ];
 
-  const handleScaleDetection = async () => {
-    if (fileList.length === 0) {
-      message.error('Please upload a PDF file first');
-      return;
-    }
-
-    setAnalyzing(true);
-    const file = fileList[0];
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file as any as File);
-      
-      const response = await api.post('/api/pdf/analyze-with-assumptions', formData, {
-        headers: {
-          'Content-Type': undefined
-        }
-      });
-
-      setScale(response.data.scale);
-      message.success(`Scale detected: ${response.data.scale.scale_ratio}`);
-    } catch (error: any) {
-      message.error(`Scale detection failed: ${error.message}`);
-    } finally {
-      setAnalyzing(false);
-    }
-  };
+  // Scale detection removed - manual selection only
 
   const handleManualScaleSet = () => {
     let scaleNotation = selectedPresetScale;
@@ -157,133 +161,47 @@ const MeasurementExtractionDemo: React.FC = () => {
       const formData = new FormData();
       formData.append('file', fileList[0] as any as File);
       formData.append('request', JSON.stringify({
-        selection_areas: [{
+        area_coordinates: {
           x: area.x,
           y: area.y,
           width: area.width,
-          height: area.height,
-          page_number: area.pageNumber,
-          calculation_type: 'joist'
-        }],
+          height: area.height
+        },
+        page_number: area.pageNumber,
         scale_notation: scale?.scale_notation || scale?.scale_ratio || '1:100 at A3'
       }));
 
-      // Update status: analyzing with AI
-      setMeasuredAreas(prev => prev.map(ma => 
-        ma.id === area.id 
-          ? { ...ma, statusMessage: 'Analyzing with Claude Vision AI... (this may take 30-60 seconds)' }
-          : ma
-      ));
-
-      const response = await api.post('/api/pdf/analyze-selected-areas', formData, {
+      const response = await api.post('/api/pdf/calculate-dimensions', formData, {
         headers: {
           'Content-Type': undefined
         },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            if (percentCompleted < 100) {
-              setMeasuredAreas(prev => prev.map(ma => 
-                ma.id === area.id 
-                  ? { ...ma, statusMessage: `Uploading: ${percentCompleted}%` }
-                  : ma
-              ));
-            }
-          }
-        }
+        // No upload progress needed for instant calculation
       });
 
-      // Extract detected label and measurements from response
-      const result = response.data;
-      console.log('Analysis response for area', area.id, ':', result);
+      // Extract measurements from response
+      const measurements = response.data;
+      console.log('Dimension calculation for area', area.id, ':', measurements);
       
-      // Log measurements information
-      if (result.measurements) {
-        console.log('Measurement results:', {
-          width_mm: result.measurements.width_mm,
-          height_mm: result.measurements.height_mm,
-          width_m: result.measurements.width_m,
-          height_m: result.measurements.height_m,
-          area_m2: result.measurements.area_m2,
-          scale_used: result.measurements.scale_used
-        });
-      }
-      
-      // Log detected elements details
-      if (result.detected_elements) {
-        console.log(`Detected ${result.detected_elements.length} elements:`);
-        result.detected_elements.forEach((elem: any, idx: number) => {
-          console.log(`Element ${idx}:`, {
-            label: elem.label,
-            type: elem.type,
-            measurements: elem.measurements,
-            confidence: elem.confidence
-          });
-        });
-      }
-      
-      const detectedElements = result.detected_elements || [];
-      const measurements = result.measurements;
-      
-      // Use measurements from backend if available
-      if (measurements) {
-        message.success(`Measured using scale: ${measurements.scale_used}`);
-      }
-      
-      if (detectedElements.length > 0) {
-        const element = detectedElements[0];
-        
-        // Use measurements from backend calculation
-        let width_m: number, height_m: number;
-        if (measurements) {
-          // Use backend-calculated measurements
-          width_m = measurements.width_m;
-          height_m = measurements.height_m;
-        } else {
-          // Fallback calculation (shouldn't happen with new system)
-          width_m = area.width / 100; // Basic fallback
-          height_m = area.height / 100;
-        }
-        
-        // Update with detected label
-        setMeasuredAreas(prev => prev.map(ma => 
-          ma.id === area.id 
-            ? {
-                ...ma,
-                detectedLabel: element.label,
-                label: element.label, // Use detected label by default
-                measurements: {
-                  width_m: width_m,
-                  height_m: height_m,
-                  confidence: element.confidence || 0.8
-                },
-                scaleUsed: measurements?.scale_used || scale?.scale_notation,
-                status: 'success'
-              }
-            : ma
-        ));
+      // Update area with calculated dimensions
+      setMeasuredAreas(prev => prev.map(ma => 
+        ma.id === area.id 
+          ? {
+              ...ma,
+              label: `${selectedElementType}-${area.label || 'Area'}`,
+              elementType: selectedElementType,
+              measurements: {
+                width_m: measurements.width_m,
+                height_m: measurements.height_m,
+                confidence: 1.0  // Always 100% confidence with math
+              },
+              scaleUsed: measurements.scale_used,
+              status: 'success',
+              statusMessage: 'Dimensions calculated'
+            }
+          : ma
+      ));
 
-        // Show modal to confirm/edit label
-        setEditingLabel(area.id);
-        setLabelInput(element.label || 'Area');
-      } else {
-        // No elements detected, but analysis completed
-        setMeasuredAreas(prev => prev.map(ma => 
-          ma.id === area.id 
-            ? {
-                ...ma,
-                label: 'Unknown Area',
-                measurements: {
-                  width_m: area.width / (scale?.scale_factor || 100),
-                  height_m: area.height / (scale?.scale_factor || 100),
-                  confidence: 0.5
-                },
-                status: 'success',
-                statusMessage: 'Analysis completed but no specific elements detected'
-              }
-            : ma
-        ));
-      }
+      message.success(`Dimensions calculated using scale: ${measurements.scale_used}`);
     } catch (error: any) {
       const errorMessage = error.response?.data?.detail || error.message || 'Unknown error';
       setMeasuredAreas(prev => prev.map(ma => 
@@ -303,6 +221,35 @@ const MeasurementExtractionDemo: React.FC = () => {
       ));
       setEditingLabel(null);
       setLabelInput('');
+    }
+  };
+
+  const performCalculation = async (area: MeasuredArea) => {
+    if (!area.measurements) return;
+
+    try {
+      const response = await apiClient.calculate(
+        area.elementType || selectedElementType,
+        {
+          width: area.measurements.width_m,
+          length: area.measurements.height_m
+        },
+        {
+          area_suffix: area.label.replace(/[^A-Z0-9]/gi, ''),
+          building_level: 'L1'
+        }
+      );
+
+      // Update area with calculation results
+      setMeasuredAreas(prev => prev.map(ma => 
+        ma.id === area.id 
+          ? { ...ma, calculationResult: response.data }
+          : ma
+      ));
+
+      message.success(`Calculation completed for ${area.label}`);
+    } catch (error: any) {
+      message.error(`Calculation failed: ${error.message}`);
     }
   };
 
@@ -353,20 +300,29 @@ const MeasurementExtractionDemo: React.FC = () => {
 
               <Space>
                 <Button 
-                  type="primary" 
-                  onClick={handleScaleDetection}
-                  loading={analyzing}
-                  disabled={fileList.length === 0}
-                >
-                  Detect Scale
-                </Button>
-
-                <Button
+                  type="primary"
                   onClick={() => setManualScaleMode(true)}
                   disabled={fileList.length === 0}
                 >
-                  Set Scale Manually
+                  Select Scale
                 </Button>
+
+                <Select
+                  value={selectedElementType}
+                  onChange={setSelectedElementType}
+                  style={{ width: 200 }}
+                  disabled={!scale}
+                >
+                  {elementTypes.map(type => (
+                    <Option 
+                      key={type.code} 
+                      value={type.code}
+                      title={type.description}
+                    >
+                      {type.code} - {type.description.slice(0, 20)}...
+                    </Option>
+                  ))}
+                </Select>
 
                 <Button
                   onClick={handleAreaSelection}
@@ -429,7 +385,7 @@ const MeasurementExtractionDemo: React.FC = () => {
               </Space>
               <div style={{ marginTop: 8 }}>
                 <Text type="secondary">
-                  Method: {scale.method} | Confidence: {scale.confidence}%
+                  Scale: {scale.scale_ratio}
                 </Text>
               </div>
               
@@ -475,6 +431,7 @@ const MeasurementExtractionDemo: React.FC = () => {
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <Space>
                       <Text strong>{area.label}</Text>
+                      {area.elementType && <Tag color="blue">{area.elementType}</Tag>}
                       {area.status === 'analyzing' && <Spin size="small" />}
                       {area.status === 'success' && <Tag color="success">✓</Tag>}
                       {area.status === 'error' && <Tag color="error">✗</Tag>}
@@ -501,7 +458,7 @@ const MeasurementExtractionDemo: React.FC = () => {
                           Dimensions: {area.measurements.width_m.toFixed(3)}m × {area.measurements.height_m.toFixed(3)}m
                         </Text>
                         <Text type="secondary">
-                          Confidence: {(area.measurements.confidence * 100).toFixed(0)}%
+                          Area: {area.measurements.width_m.toFixed(3)}m × {area.measurements.height_m.toFixed(3)}m
                         </Text>
                         {area.scaleUsed && (
                           <Text type="secondary" style={{ fontSize: 12 }}>
@@ -515,6 +472,26 @@ const MeasurementExtractionDemo: React.FC = () => {
                       <Text type="secondary">
                         Originally detected as: {area.detectedLabel}
                       </Text>
+                    )}
+                    
+                    {/* Calculate button for successful measurements */}
+                    {area.status === 'success' && area.measurements && !area.calculationResult && (
+                      <Button 
+                        size="small"
+                        type="primary"
+                        onClick={() => performCalculation(area)}
+                      >
+                        Calculate Materials
+                      </Button>
+                    )}
+                    
+                    {/* Show calculation results */}
+                    {area.calculationResult && (
+                      <Card size="small" style={{ marginTop: 8 }}>
+                        <pre style={{ fontSize: '11px', margin: 0 }}>
+                          {area.calculationResult.formatted_output}
+                        </pre>
+                      </Card>
                     )}
                   </Space>
                 </List.Item>
@@ -536,7 +513,7 @@ const MeasurementExtractionDemo: React.FC = () => {
         }}
       >
         <Space direction="vertical" style={{ width: '100%' }}>
-          <Text>The AI detected this label. You can confirm or change it:</Text>
+          <Text>Enter a label for this area:</Text>
           <Input
             value={labelInput}
             onChange={(e) => setLabelInput(e.target.value)}

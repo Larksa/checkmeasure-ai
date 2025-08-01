@@ -1,7 +1,14 @@
 import math
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from core.materials.material_system import MaterialSystem
+
+# Import enhanced calculator functionality
+try:
+    from .enhanced_joist_calculator import EnhancedJoistCalculator, JOIST_TYPES
+    ENHANCED_AVAILABLE = True
+except ImportError:
+    ENHANCED_AVAILABLE = False
 
 @dataclass
 class JoistCalculationResult:
@@ -18,9 +25,15 @@ class JoistCalculationResult:
     assumptions: List[str]
 
 class JoistCalculator:
-    def __init__(self):
+    def __init__(self, use_enhanced: bool = True):
         self.material_system = MaterialSystem()
         self.standard_lengths = self.material_system.get_standard_lengths()
+        
+        # Use enhanced calculator if available and requested
+        if use_enhanced and ENHANCED_AVAILABLE:
+            self._enhanced = EnhancedJoistCalculator()
+        else:
+            self._enhanced = None
     
     def calculate_joists(
         self,

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pdf_processing.pdf_analyzer import PDFAnalyzer
 from pdf_processing.joist_detector import JoistDetector
 from pdf_processing.pdf_scale_calculator import PDFScaleCalculator, COMMON_SCALES
@@ -8,6 +8,7 @@ from utils.dependency_checker import DependencyChecker
 from utils.error_logger import error_logger, log_error, log_warning, log_info
 import traceback
 import logging
+import json
 import fitz  # PyMuPDF
 
 # Try to import advanced modules with error handling
@@ -1114,9 +1115,16 @@ async def analyze_selected_areas(
     
     try:
         import datetime, json
-        log_info("Starting selected areas analysis with Claude Vision", "pdf_processing.area_analysis")
+        import os
+        import psutil
+        
+        # Log request start with detailed info
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        log_info(f"Starting selected areas analysis - Memory: {memory_info.rss / 1024 / 1024:.1f}MB, PID: {os.getpid()}", "pdf_processing.area_analysis")
         
         content = await file.read()
+        log_info(f"PDF file read - Size: {len(content) / 1024:.1f}KB", "pdf_processing.area_analysis")
         
         # Parse the JSON request
         try:
@@ -1127,14 +1135,39 @@ async def analyze_selected_areas(
             raise HTTPException(status_code=400, detail="Invalid JSON in request parameter")
         
         # Initialize Claude Vision analyzer
-        analyzer = ClaudeVisionAnalyzer()
+        try:
+            log_info("Initializing Claude Vision analyzer...", "pdf_processing.analyzer_init")
+            analyzer = ClaudeVisionAnalyzer()
+            log_info("Claude Vision analyzer initialized successfully", "pdf_processing.analyzer_init")
+        except Exception as init_error:
+            error_id = log_error(init_error, "pdf_processing.analyzer_init")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to initialize Claude Vision analyzer: {str(init_error)}. Error ID: {error_id}"
+            )
         
         # Analyze the selected areas (without scale_factor)
-        area_result = analyzer.analyze_selected_areas(content, selection_areas, None)
+        try:
+            area_result = analyzer.analyze_selected_areas(content, selection_areas, None)
+        except Exception as analysis_error:
+            error_id = log_error(analysis_error, "pdf_processing.area_analysis_failed", 
+                               additional_info={"areas_count": len(selection_areas)})
+            # More specific error handling
+            if "anthropic" in str(analysis_error).lower():
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Claude Vision API error: {str(analysis_error)}. Error ID: {error_id}"
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Area analysis failed: {str(analysis_error)}. Error ID: {error_id}"
+                )
         
         # Calculate measurements using PDF scale calculator
         measurements = None
         if selection_areas:
+            pdf_doc = None
             try:
                 # Open PDF to get page dimensions
                 pdf_doc = fitz.open(stream=content, filetype="pdf")
@@ -1163,6 +1196,9 @@ async def analyze_selected_areas(
             except Exception as e:
                 log_error(e, "pdf_processing.scale_calculation")
                 measurements = None
+            finally:
+                if pdf_doc:
+                    pdf_doc.close()
         
         # Generate form data from the area analysis
         form_data = analyzer.create_form_data_from_area_analysis(area_result)
@@ -1195,6 +1231,11 @@ async def analyze_selected_areas(
             "form_data_generated": form_data,
             "detection_methods_tried": ["claude_vision_area_analysis"]
         }
+        
+        # Log request completion
+        memory_info_end = process.memory_info()
+        log_info(f"Request completed successfully - Memory: {memory_info_end.rss / 1024 / 1024:.1f}MB (delta: {(memory_info_end.rss - memory_info.rss) / 1024 / 1024:.1f}MB)", 
+                "pdf_processing.area_analysis")
         
         # Return structured result
         return AreaAnalysisResult(
@@ -1399,3 +1440,79 @@ async def get_scale_notations():
         "common_scales": COMMON_SCALES,
         "default": "1:100 at A3"
     }
+
+class DimensionCalculationRequest(BaseModel):
+    """Simple request for dimension calculation without AI"""
+    area_coordinates: Dict[str, float]  # x, y, width, height
+    page_number: int
+    scale_notation: str = "1:100 at A3"
+
+class DimensionCalculationResponse(BaseModel):
+    """Simple response with calculated dimensions"""
+    width_mm: float
+    height_mm: float
+    width_m: float
+    height_m: float
+    area_m2: float
+    scale_used: str
+
+@router.post("/calculate-dimensions", response_model=DimensionCalculationResponse)
+async def calculate_dimensions(
+    file: UploadFile = File(...),
+    request: str = Form(...)
+) -> DimensionCalculationResponse:
+    """Calculate real-world dimensions from PDF coordinates - no AI needed"""
+    
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="File must be a PDF")
+    
+    pdf_doc = None
+    try:
+        # Parse request
+        request_data = json.loads(request)
+        area = request_data.get("area_coordinates", {})
+        scale_notation = request_data.get("scale_notation", "1:100 at A3")
+        
+        # Read PDF to get page dimensions
+        content = await file.read()
+        pdf_doc = fitz.open(stream=content, filetype="pdf")
+        
+        # Get page dimensions
+        page_index = request_data.get("page_number", 1) - 1  # Convert to 0-based
+        if page_index < 0 or page_index >= len(pdf_doc):
+            raise HTTPException(status_code=400, detail="Invalid page number")
+            
+        page = pdf_doc[page_index]
+        pdf_width_mm = page.rect.width * 0.3528
+        pdf_height_mm = page.rect.height * 0.3528
+        
+        # Initialize scale calculator
+        scale_calc = PDFScaleCalculator(scale_notation)
+        
+        # Calculate dimensions
+        measurements = scale_calc.measure_area(
+            area.get("x", 0),
+            area.get("y", 0),
+            area.get("x", 0) + area.get("width", 0),
+            area.get("y", 0) + area.get("height", 0),
+            pdf_width_mm,
+            pdf_height_mm
+        )
+        
+        return DimensionCalculationResponse(
+            width_mm=measurements['width_mm'],
+            height_mm=measurements['height_mm'],
+            width_m=measurements['width_m'],
+            height_m=measurements['height_m'],
+            area_m2=measurements['area_m2'],
+            scale_used=measurements['scale_used']
+        )
+        
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request")
+    except Exception as e:
+        log_error(e, "pdf_processing.calculate_dimensions")
+        raise HTTPException(status_code=500, detail=f"Dimension calculation failed: {str(e)}")
+    finally:
+        if pdf_doc:
+            pdf_doc.close()

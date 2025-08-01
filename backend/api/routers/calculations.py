@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from core.calculators.joist_calculator import JoistCalculator
 from core.materials.material_system import MaterialSystem
+from core.calculators.calculator_factory import CalculatorFactory, create_calculator
+from core.calculators.element_types import element_registry, CalculatorType
 
 router = APIRouter()
 
@@ -60,3 +62,128 @@ async def get_joist_materials():
     """Get available joist materials and specifications"""
     material_system = MaterialSystem()
     return material_system.get_joist_materials()
+
+
+# New generic calculation endpoints
+
+class GenericCalculationRequest(BaseModel):
+    element_code: str  # e.g., 'J1', 'S1', '1B3'
+    dimensions: Dict[str, float]  # e.g., {'width': 3.386, 'length': 4.872}
+    options: Optional[Dict[str, Any]] = None  # Additional options
+
+
+class GenericCalculationResponse(BaseModel):
+    element_code: str
+    element_description: str
+    calculation_result: Dict[str, Any]
+    formatted_output: str
+    warnings: List[str] = []
+
+
+@router.post("/calculate", response_model=GenericCalculationResponse)
+async def calculate_generic(request: GenericCalculationRequest):
+    """
+    Generic calculation endpoint that works with any element type.
+    
+    This endpoint:
+    - Accepts any element code from the registry
+    - Uses the appropriate calculator (or generic if not implemented)
+    - Returns calculation results in a consistent format
+    """
+    try:
+        # Create calculator for the element type
+        calculator = create_calculator(request.element_code)
+        if not calculator:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown or inactive element code: {request.element_code}"
+            )
+        
+        # Get element info
+        element_spec = element_registry.get(request.element_code)
+        
+        # Perform calculation
+        result = calculator.calculate(
+            dimensions=request.dimensions,
+            options=request.options
+        )
+        
+        # Format output
+        formatted = calculator.format_output(result)
+        
+        return GenericCalculationResponse(
+            element_code=request.element_code,
+            element_description=element_spec.description,
+            calculation_result=result,
+            formatted_output=formatted,
+            warnings=result.get('warnings', [])
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Calculation error: {str(e)}")
+
+
+class ElementTypeInfo(BaseModel):
+    code: str
+    description: str
+    category: str
+    calculator_type: str
+    specification: Dict[str, Any]
+    active: bool
+
+
+@router.get("/element-types", response_model=List[ElementTypeInfo])
+async def get_element_types(active_only: bool = True, category: Optional[str] = None):
+    """
+    Get all available element types from the registry.
+    
+    Query parameters:
+    - active_only: If true, only return active element types
+    - category: Filter by category (e.g., 'Floor System', 'Wall Framing')
+    """
+    all_types = element_registry.get_all(active_only=active_only)
+    
+    result = []
+    for code, spec in all_types.items():
+        # Apply category filter if provided
+        if category and spec.category != category:
+            continue
+        
+        result.append(ElementTypeInfo(
+            code=spec.code,
+            description=spec.description,
+            category=spec.category,
+            calculator_type=spec.calculator_type.value,
+            specification=spec.specification,
+            active=spec.active
+        ))
+    
+    return result
+
+
+@router.get("/element-types/{code}", response_model=ElementTypeInfo)
+async def get_element_type(code: str):
+    """Get details for a specific element type."""
+    spec = element_registry.get(code)
+    if not spec:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Element type '{code}' not found"
+        )
+    
+    return ElementTypeInfo(
+        code=spec.code,
+        description=spec.description,
+        category=spec.category,
+        calculator_type=spec.calculator_type.value,
+        specification=spec.specification,
+        active=spec.active
+    )
+
+
+@router.get("/categories")
+async def get_categories():
+    """Get all available element categories."""
+    return element_registry.get_categories()

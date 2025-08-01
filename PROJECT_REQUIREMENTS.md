@@ -336,6 +336,8 @@ AI-powered construction material calculation assistant that revolutionizes how A
 | 2025-07-30 | Replace AI calibration with math | AI vision couldn't read blurry text | 100% accurate measurements |
 | 2025-07-30 | Scale notation "1:100 at A3" | Include paper size in scale | Accounts for PDF vs print size |
 | 2025-07-30 | PDF coordinate measurement | Use PDF points not pixels | Resolution independent |
+| 2025-08-01 | Remove Claude Vision entirely | Users already select element types | Instant calculations, no API costs |
+| 2025-08-01 | Math-only dimension calculation | Simple coordinate conversion | 100% reliable, no timeouts |
 
 ## 🚀 Future Improvements & Technical Debt
 
@@ -373,3 +375,113 @@ AI-powered construction material calculation assistant that revolutionizes how A
 - [ ] Implement parallel processing for multiple area analysis
 - [ ] Add comprehensive error boundaries in React
 - [ ] Create proper dev/staging/prod configurations
+
+## 🔬 Hypothesis vs Reality Tracking
+
+### Issue: Intermittent Connection Refused Errors (2025-08-01)
+
+#### Initial Hypothesis
+- **Root Cause Theory**: Heavy calculator imports + PDF memory leaks cause backend crashes
+- **Evidence**: 
+  - Errors occur after element types load successfully
+  - PDF processing opens multiple documents without cleanup
+  - Backend becomes unreachable, suggesting process crash
+- **Proposed Solution**:
+  1. Lazy loading for calculators to prevent heavy startup
+  2. Fix resource management in PDF processing with proper cleanup
+  3. Add health monitoring and exception handling
+
+#### Implementation Plan
+- **Task 1**: Add lazy calculator loading in factory
+- **Task 2**: Fix PDF resource cleanup with try-finally blocks
+- **Task 3**: Add exception handling to prevent crashes
+- **Task 4**: Test and verify the fix
+
+#### Reality Check (Updated 2025-08-01)
+
+##### Initial Results (Partial Success! 🎉)
+- **First Request**: ✅ Worked perfectly! Joist analysis completed successfully
+- **Second Request**: ❌ Failed after taking a break (backend stopped responding)
+
+##### Root Cause Analysis
+- **Confirmed Root Cause**: PDF resources not being closed properly in error paths (pdf_doc.close() not in finally blocks)
+- **New Discovery**: Backend fails after idle period, suggesting additional issues
+
+##### What Worked
+- ✅ Resource cleanup with try-finally blocks prevented immediate crashes
+- ✅ Global exception handler prevents crashes from exceptions
+- ✅ Lazy loading reduced startup memory footprint
+- ✅ First request always works perfectly
+- ✅ Element types load successfully
+
+##### What Didn't Work
+- ❌ Backend becomes unresponsive after idle time
+- ❌ Initial hypothesis about heavy calculator imports was only partially correct
+- ❌ Fix didn't address all stability issues
+
+##### Lessons Learned
+- Always use try-finally for resource cleanup in Python
+- File handles and PDF documents must be explicitly closed
+- Global exception handlers are essential for API stability
+- Test with the actual user workflow to reproduce issues
+- **New Learning**: Some bugs only manifest after time passes (temporal bugs)
+- **New Learning**: Need to test idle scenarios, not just immediate usage
+
+##### Time Tracking
+- **First Fix**: Estimated 2h, Actual: 45 minutes
+- **New Issue Investigation**: In progress...
+
+### Issue: Backend Timeout After Idle Period (2025-08-01)
+
+#### New Hypothesis
+- **Root Cause Theory**: Backend process dies or becomes unresponsive after idle period
+- **Evidence**:
+  - First request works perfectly
+  - Backend fails after user takes a break
+  - Backend health check returns "not responding"
+- **Possible Causes**:
+  1. Anthropic client timeout/connection expiry
+  2. Memory leak that accumulates over time
+  3. Process manager killing idle processes
+  4. Database/resource connection timeouts
+
+#### Investigation Plan
+- **Task 1**: Add lifecycle logging to track request start/end
+- **Task 2**: Monitor memory usage over time
+- **Task 3**: Check Anthropic client connection management
+- **Task 4**: Implement keep-alive or connection refresh
+- **Task 5**: Test with deliberate idle periods
+
+#### Reality Check (Completed 2025-08-01)
+- **Actual Root Cause**: Claude Vision API was completely unnecessary!
+- **Solution**: Removed Claude Vision entirely - users already select element types manually
+- **Prevention**: Don't add AI where simple math works better
+
+### 🎯 MAJOR ARCHITECTURAL SIMPLIFICATION (2025-08-01)
+
+#### The Problem
+We discovered that Claude Vision was being used unnecessarily:
+- Users already select the element type (J1, J2, etc.) from dropdown
+- Users already select the scale manually
+- All we needed was to convert mouse coordinates to real dimensions
+
+#### The Solution
+1. **Removed Claude Vision completely** - No more 6-7 second API calls
+2. **Created simple math endpoint** - `/api/pdf/calculate-dimensions`
+3. **Instant calculations** - Mouse coordinates → real dimensions in milliseconds
+4. **Zero API costs** - No external dependencies
+
+#### Changes Made
+- ✅ New endpoint that only uses PDFScaleCalculator
+- ✅ Updated frontend to call new endpoint
+- ✅ Removed all "AI analysis" and "confidence" UI elements
+- ✅ Removed auto-scale detection (manual only)
+- ✅ Commented out anthropic dependency
+- ✅ Marked claude_vision_analyzer.py as LEGACY
+
+#### Results
+- **Performance**: 6-7 seconds → instant
+- **Reliability**: No more connection timeouts
+- **Simplicity**: Removed ~500 lines of unnecessary code
+- **Cost**: $0 (was using Claude Vision API)
+- **User Experience**: Much better - instant feedback

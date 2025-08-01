@@ -252,10 +252,38 @@
 5. Updated MeasurementExtractionDemo to remove calibration UI
 6. Updated scale display to reflect mathematical approach
 
+## Backend Stability - Resource Management Pattern
+
+- **Issue**: Intermittent connection refused errors when using PDF analysis
+  - **Time to solve**: 45 minutes
+  - **Solution**: Add try-finally blocks for all PDF document operations
+  - **Reusable pattern?**: Yes - Critical for any file/resource handling
+  - **Knowledge bank**: Resource cleanup pattern
+
+### Key Discovery: PDF Resource Leaks
+- **What happened**: PDF documents opened with PyMuPDF weren't closed in error paths
+- **Impact**: Memory exhaustion caused backend crashes
+- **Fix**: Always use try-finally for resource cleanup:
+  ```python
+  pdf_doc = None
+  try:
+      pdf_doc = fitz.open(stream=content, filetype="pdf")
+      # ... process PDF
+  finally:
+      if pdf_doc:
+          pdf_doc.close()
+  ```
+
+### Global Exception Handler Pattern
+- **Purpose**: Prevent any uncaught exception from crashing the server
+- **Implementation**: Add to FastAPI app instance
+- **Benefit**: API stays running even with unexpected errors
+- **Logs**: All crashes logged with error_id for debugging
+
 ## Knowledge Bank Contributions
 
 - Patterns used: 8 (FastAPI structure, React components, error handling, API integration, multi-agent, defensive coding, manual overrides, PDF coordinates)
-- New patterns contributed: 8 (Claude Vision, PDF analysis, multi-level fallback, manual override, defensive null checking, auto-calibration, mathematical scale calculation, code cleanup workflow)
-- Gotchas documented: 10 (token limits, coordinates, DPI, package imports, FormData, null values, dict keys, UI states, logging imports, scale notation)
-- Skills developed: 9 (Claude Vision, PyMuPDF, FastAPI, construction standards, multi-agent, defensive programming, auto-calibration, PDF coordinate systems, technical debt removal)
-- Workflows documented: 4 (PDF analysis, error debugging, scale calculation, code cleanup)
+- New patterns contributed: 9 (Claude Vision, PDF analysis, multi-level fallback, manual override, defensive null checking, auto-calibration, mathematical scale calculation, code cleanup workflow, resource management)
+- Gotchas documented: 11 (token limits, coordinates, DPI, package imports, FormData, null values, dict keys, UI states, logging imports, scale notation, PDF resource leaks)
+- Skills developed: 10 (Claude Vision, PyMuPDF, FastAPI, construction standards, multi-agent, defensive programming, auto-calibration, PDF coordinate systems, technical debt removal, resource management)
+- Workflows documented: 5 (PDF analysis, error debugging, scale calculation, code cleanup, hypothesis-driven debugging)
