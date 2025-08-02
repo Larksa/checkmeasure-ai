@@ -73,18 +73,26 @@ const MeasurementExtractionDemo: React.FC = () => {
     clearSelectionAreas 
   } = useAppStore();
 
-  // Load element types on component mount
+  // Load element types on component mount - delayed to avoid backend crash
   React.useEffect(() => {
-    loadElementTypes();
+    // Only load element types after a delay and if needed
+    const timer = setTimeout(() => {
+      loadElementTypes();
+    }, 2000); // 2 second delay
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const loadElementTypes = async () => {
     try {
       const response = await apiClient.getElementTypes();
       setElementTypes(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load element types:', error);
-      message.error('Failed to load element types');
+      // Don't show error message for connection issues during startup
+      if (error?.code !== 'ERR_NETWORK') {
+        message.error('Failed to load element types');
+      }
     }
   };
 

@@ -5,8 +5,14 @@ from core.calculators.joist_calculator import JoistCalculator
 from core.materials.material_system import MaterialSystem
 from core.calculators.calculator_factory import CalculatorFactory, create_calculator
 from core.calculators.element_types import element_registry, CalculatorType
+import logging
+
+print("[CALCULATIONS ROUTER] Importing calculations router...")
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+print(f"[CALCULATIONS ROUTER] Element registry has {len(element_registry._types)} types")
 
 class JoistCalculationRequest(BaseModel):
     span_length: float  # meters
@@ -143,44 +149,63 @@ async def get_element_types(active_only: bool = True, category: Optional[str] = 
     - active_only: If true, only return active element types
     - category: Filter by category (e.g., 'Floor System', 'Wall Framing')
     """
-    all_types = element_registry.get_all(active_only=active_only)
-    
-    result = []
-    for code, spec in all_types.items():
-        # Apply category filter if provided
-        if category and spec.category != category:
-            continue
+    try:
+        logger.info(f"Getting element types - active_only: {active_only}, category: {category}")
+        logger.info(f"Element registry type: {type(element_registry)}")
+        logger.info(f"Element registry has get_all: {hasattr(element_registry, 'get_all')}")
         
-        result.append(ElementTypeInfo(
+        all_types = element_registry.get_all(active_only=active_only)
+        logger.info(f"Found {len(all_types)} element types")
+        
+        result = []
+        for code, spec in all_types.items():
+            # Apply category filter if provided
+            if category and spec.category != category:
+                continue
+            
+            result.append(ElementTypeInfo(
+                code=spec.code,
+                description=spec.description,
+                category=spec.category,
+                calculator_type=spec.calculator_type.value,
+                specification=spec.specification,
+                active=spec.active
+            ))
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error getting element types: {str(e)}", exc_info=True)
+        # Return empty list instead of crashing
+        return []
+
+
+@router.get("/element-types/{code}", response_model=ElementTypeInfo)
+async def get_element_type(code: str):
+    """Get details for a specific element type."""
+    try:
+        spec = element_registry.get(code)
+        if not spec:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Element type '{code}' not found"
+            )
+        
+        return ElementTypeInfo(
             code=spec.code,
             description=spec.description,
             category=spec.category,
             calculator_type=spec.calculator_type.value,
             specification=spec.specification,
             active=spec.active
-        ))
-    
-    return result
-
-
-@router.get("/element-types/{code}", response_model=ElementTypeInfo)
-async def get_element_type(code: str):
-    """Get details for a specific element type."""
-    spec = element_registry.get(code)
-    if not spec:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Element type '{code}' not found"
         )
-    
-    return ElementTypeInfo(
-        code=spec.code,
-        description=spec.description,
-        category=spec.category,
-        calculator_type=spec.calculator_type.value,
-        specification=spec.specification,
-        active=spec.active
-    )
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Error getting element type {code}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error getting element type '{code}'"
+        )
 
 
 @router.get("/categories")

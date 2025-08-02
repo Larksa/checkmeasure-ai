@@ -79,19 +79,21 @@ const App: React.FC = () => {
       }
     };
 
-    // Initial health check
-    checkBackendHealth();
+    // Initial health check after a short delay to let backend fully start
+    setTimeout(() => {
+      checkBackendHealth();
+    }, 1000);
 
-    // Set up keep-alive interval - ping every 15 seconds to prevent timeouts
+    // Set up keep-alive interval - ping every 60 seconds (less aggressive)
     keepAliveInterval = setInterval(() => {
       checkBackendHealth();
-    }, 15000);
+    }, 60000);
 
     // Cleanup on unmount
     return () => {
       clearInterval(keepAliveInterval);
     };
-  }, [backendHealthy]);
+  }, []); // Remove backendHealthy dependency to prevent recreation
 
   const uploadProps: UploadProps = {
     name: 'file',

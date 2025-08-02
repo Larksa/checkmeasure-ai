@@ -8,7 +8,36 @@ CheckMeasureAI is an AI-powered construction material calculation assistant desi
 
 ## Development Commands
 
-### Quick Start (Recommended)
+### Docker Development (Recommended - Solves macOS Issues)
+
+```bash
+# First time setup
+./setup-docker.sh
+
+# Start all services with Docker
+make up
+
+# View logs
+make logs
+
+# Stop services
+make down
+
+# Clean everything
+make clean
+
+# Access backend shell
+make shell
+
+# This Docker setup:
+# - Eliminates macOS process management issues
+# - Provides consistent environment
+# - Auto-restarts on failure
+# - Includes health checks
+# - Persists uploaded PDFs
+```
+
+### Traditional Development (Alternative)
 
 ```bash
 # Start both backend and frontend servers with one command
@@ -166,7 +195,39 @@ The project includes an advanced multi-agent architecture:
 
 ## Environment Requirements
 
+### Docker (Recommended)
+- Docker Desktop installed and running
+- 4GB+ RAM allocated to Docker
+- 10GB+ free disk space
+
+### Traditional Setup
 - Python 3.11+ (backend)
 - Node.js 18+ (frontend)
 - PyMuPDF for PDF processing
 - Claude API access for vision analysis (optional)
+
+## Docker Troubleshooting
+
+### Common Issues
+
+1. **Build takes forever**: First build downloads all dependencies (normal - can take 5-10 minutes)
+2. **Port already in use**: Run `./scripts/stop.sh` first or `docker-compose down`
+3. **Permission denied**: Make sure scripts are executable: `chmod +x *.sh`
+4. **M1 Mac issues**: The `docker-compose.override.yml` forces x86 platform if needed
+5. **Backend dies after idle**: This is exactly what Docker solves! Use Docker instead of traditional setup
+
+### Quick Fixes
+
+```bash
+# Reset everything
+make clean
+docker system prune -f
+
+# Rebuild from scratch
+make build
+
+# Check what's running
+docker-compose ps
+docker logs checkmeasure-backend
+docker logs checkmeasure-frontend
+```

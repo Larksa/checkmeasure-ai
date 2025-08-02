@@ -136,3 +136,6 @@ dmypy.json
 # Local development
 prepare-deployment.sh
 deployment-checklist.mdvenv/
+uploads/
+temp/
+docker-compose.override.yml

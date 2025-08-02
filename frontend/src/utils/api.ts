@@ -108,6 +108,17 @@ export const apiClient = {
   },
 };
 
+// Add request interceptor for debugging
+api.interceptors.request.use(
+  (config) => {
+    console.log(`Making request to: ${config.baseURL}${config.url}`);
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 // Error handling
 api.interceptors.response.use(
   (response) => response,
