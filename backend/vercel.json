@@ -2,14 +2,23 @@
   "version": 2,
   "builds": [
     {
-      "src": "main.py",
-      "use": "@vercel/python"
+      "src": "main_vercel.py",
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.9"
+      }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "main.py"
+      "dest": "main_vercel.py"
     }
-  ]
+  ],
+  "installCommand": "pip install -r requirements-vercel.txt",
+  "functions": {
+    "main_vercel.py": {
+      "maxDuration": 60
+    }
+  }
 }
