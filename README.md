@@ -39,7 +39,7 @@ CheckMeasureAI revolutionizes construction material calculations by combining in
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/checkmeasure-ai.git
+git clone https://github.com/Larksa/checkmeasure-ai.git
 cd checkmeasure-ai
 ```
 
@@ -190,9 +190,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/checkmeasure-ai/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/checkmeasure-ai/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/checkmeasure-ai/wiki)
+- **Issues**: [GitHub Issues](https://github.com/Larksa/checkmeasure-ai/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Larksa/checkmeasure-ai/discussions)
+- **Documentation**: [Wiki](https://github.com/Larksa/checkmeasure-ai/wiki)
 
 ---
 
