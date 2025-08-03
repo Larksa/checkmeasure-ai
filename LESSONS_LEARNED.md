@@ -280,10 +280,125 @@
 - **Benefit**: API stays running even with unexpected errors
 - **Logs**: All crashes logged with error_id for debugging
 
+## Docker Implementation Lessons [NEW SECTION]
+
+### Technical Skills
+
+- **Skill**: Docker containerization for Python/React apps
+  - **Depth**: Beginner → Advanced
+  - **Key insight**: Docker solves macOS process management issues completely
+  - **Future applications**: Any full-stack development on macOS
+
+- **Skill**: Docker networking and service communication
+  - **Depth**: Beginner → Intermediate
+  - **Key insight**: Browser requests use localhost, not container hostnames
+  - **Future applications**: All dockerized web applications
+
+- **Skill**: Resource management in Docker
+  - **Depth**: Beginner → Intermediate  
+  - **Key insight**: Memory limits prevent system overload, reservations ensure performance
+  - **Future applications**: Any containerized application with memory requirements
+
+### Docker Problems Solved
+
+- **Issue**: Backend immediately crashes on macOS (process killed by system)
+  - **Time to solve**: 6 hours (including research and setup)
+  - **Solution**: Complete Docker containerization with Linux containers
+  - **Reusable pattern?**: Yes - Docker for any Python web service on macOS
+  - **Knowledge bank**: macOS Python process management workaround
+
+- **Issue**: Frontend can't connect to backend using `backend:8000` URL
+  - **Time to solve**: 2 hours
+  - **Solution**: Use `localhost:8000` in frontend, let Docker port mapping handle routing
+  - **Reusable pattern?**: Yes - browser networking vs container networking
+  - **Knowledge bank**: Docker service communication patterns
+
+- **Issue**: React memory usage spiraling out of control in Docker
+  - **Time to solve**: 1 hour
+  - **Solution**: Resource limits (2GB max) + node_modules volume exclusion
+  - **Reusable pattern?**: Yes - React in Docker resource management
+  - **Knowledge bank**: Node.js Docker optimization
+
+- **Issue**: Slow Docker rebuild times during development
+  - **Time to solve**: 30 minutes
+  - **Solution**: Volume mounting for hot reload + multi-stage builds
+  - **Reusable pattern?**: Yes - Docker development workflow optimization
+  - **Knowledge bank**: Docker development speed patterns
+
+- **Issue**: File permission conflicts between host and container
+  - **Time to solve**: 45 minutes
+  - **Solution**: Non-root user (UID 1000) matching host permissions
+  - **Reusable pattern?**: Yes - Docker security and permissions
+  - **Knowledge bank**: Docker user management patterns
+
+### Docker Patterns Discovered
+
+- **Pattern**: Makefile for Docker command abstraction
+  - **Use case**: Simplify complex docker-compose commands
+  - **Projects used in**: CheckMeasureAI
+  - **Commands**: `make up`, `make down`, `make logs`, `make clean`, `make shell`
+
+- **Pattern**: Volume strategy for development vs production
+  - **Use case**: Hot reload in dev, persistence in prod
+  - **Implementation**: Bind mounts for code, named volumes for data
+  - **Projects used in**: CheckMeasureAI
+
+- **Pattern**: Health checks with startup grace period
+  - **Use case**: Prevent premature container restarts during initialization
+  - **Implementation**: `start-period: 40s` for apps with heavy startup
+  - **Projects used in**: CheckMeasureAI backend
+
+- **Pattern**: Resource limits with reservations
+  - **Use case**: Prevent memory runaway while ensuring performance
+  - **Implementation**: limits (max) + reservations (guaranteed)
+  - **Projects used in**: CheckMeasureAI frontend/backend
+
+### Docker Gotchas Encountered
+
+- **Technology**: Docker service networking
+  - **Issue**: Using container hostnames in frontend environment variables
+  - **Fix**: Use localhost for browser requests, container names for server-to-server
+  - **Time wasted**: 2 hours debugging connection refused errors
+
+- **Technology**: Node.js volume mounting
+  - **Issue**: Host node_modules conflicting with container modules
+  - **Fix**: Anonymous volume exclusion: `/app/node_modules`
+  - **Time wasted**: 1 hour debugging module resolution errors
+
+- **Technology**: Docker layer caching
+  - **Issue**: Copying entire source before installing dependencies
+  - **Fix**: Copy requirements.txt first, then source code
+  - **Time wasted**: 30 minutes with slow rebuilds
+
+- **Technology**: Docker disk space management
+  - **Issue**: Build cache and unused images consuming disk space
+  - **Fix**: Regular `docker system prune -f` in cleanup scripts
+  - **Time wasted**: 45 minutes troubleshooting disk space errors
+
+### Major Architecture Decision - Docker First Approach
+
+- **Issue**: Attempting local development on macOS causing system conflicts
+  - **Time to solve**: 6 hours (including failed local attempts)
+  - **Solution**: Complete Docker implementation from day one
+  - **Reusable pattern?**: Yes - Docker first for any full-stack project
+  - **Knowledge bank**: macOS development environment pattern
+
+- **Key Insight**: "Works on my machine" eliminated completely
+  - **Before**: Hours spent on environment setup and conflicts
+  - **After**: `make up` and everything works consistently
+  - **Lesson**: Docker overhead is worth it for team consistency
+
+- **Implementation Results**:
+  - ✅ Zero environment setup issues
+  - ✅ Automatic service recovery with health checks
+  - ✅ Resource isolation prevents system impacts
+  - ✅ Hot reload works perfectly in containers
+  - ✅ Persistent data survives container rebuilds
+
 ## Knowledge Bank Contributions
 
 - Patterns used: 8 (FastAPI structure, React components, error handling, API integration, multi-agent, defensive coding, manual overrides, PDF coordinates)
-- New patterns contributed: 9 (Claude Vision, PDF analysis, multi-level fallback, manual override, defensive null checking, auto-calibration, mathematical scale calculation, code cleanup workflow, resource management)
-- Gotchas documented: 11 (token limits, coordinates, DPI, package imports, FormData, null values, dict keys, UI states, logging imports, scale notation, PDF resource leaks)
-- Skills developed: 10 (Claude Vision, PyMuPDF, FastAPI, construction standards, multi-agent, defensive programming, auto-calibration, PDF coordinate systems, technical debt removal, resource management)
-- Workflows documented: 5 (PDF analysis, error debugging, scale calculation, code cleanup, hypothesis-driven debugging)
+- New patterns contributed: 13 (Claude Vision, PDF analysis, multi-level fallback, manual override, defensive null checking, auto-calibration, mathematical scale calculation, code cleanup workflow, resource management, Docker Makefile commands, Docker volume strategy, health checks with grace period, resource limits with reservations)
+- Gotchas documented: 15 (token limits, coordinates, DPI, package imports, FormData, null values, dict keys, UI states, logging imports, scale notation, PDF resource leaks, Docker service networking, Node.js volume mounting, Docker layer caching, disk space management)
+- Skills developed: 13 (Claude Vision, PyMuPDF, FastAPI, construction standards, multi-agent, defensive programming, auto-calibration, PDF coordinate systems, technical debt removal, resource management, Docker containerization, Docker networking, resource management in containers)
+- Workflows documented: 6 (PDF analysis, error debugging, scale calculation, code cleanup, hypothesis-driven debugging, Docker development workflow)

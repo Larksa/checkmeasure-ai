@@ -4,17 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CheckMeasureAI is an AI-powered construction material calculation assistant designed for Australian structural engineers and builders. It automates material takeoffs from architectural drawings and generates professional cutting lists compliant with Australian standards.
+CheckMeasureAI is an AI-powered construction material calculation assistant for Australian structural engineers and builders. It automates material takeoffs from architectural drawings and generates professional cutting lists compliant with Australian standards (AS1684).
 
 ## Development Commands
 
-### Docker Development (Recommended - Solves macOS Issues)
+### Docker Development (Recommended)
 
 ```bash
 # First time setup
 ./setup-docker.sh
 
-# Start all services with Docker
+# Start all services
 make up
 
 # View logs
@@ -29,205 +29,104 @@ make clean
 # Access backend shell
 make shell
 
-# This Docker setup:
-# - Eliminates macOS process management issues
-# - Provides consistent environment
-# - Auto-restarts on failure
-# - Includes health checks
-# - Persists uploaded PDFs
+# Run tests
+make test
 ```
 
-### Traditional Development (Alternative)
+### Traditional Development
 
 ```bash
-# Start both backend and frontend servers with one command
+# Start both servers with one command
 ./scripts/dev.sh
-
-# This will:
-# - Check if ports are already in use
-# - Start backend on http://localhost:8000
-# - Start frontend on http://localhost:3000
-# - Handle cleanup on Ctrl+C
-# - Show clear status messages
 
 # Stop all servers cleanly
 ./scripts/stop.sh
-```
 
-### Manual Server Start (Alternative)
-
-```bash
-cd backend
-
-# Install dependencies (first time setup)
-pip install -r requirements.txt
-
-# Run development server
-python3 main.py
-# or
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-# Run basic tests
-python3 test_basic.py
-
-# Run specific tests with pytest
-python3 -m pytest tests/
-```
-
-### Frontend Development
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Run development server
-npm start
-
-# Build for production
-npm run build
-
-# Run tests
-npm test
-```
-
-### Full System Development
-
-```bash
-# Terminal 1: Backend
+# Manual backend start
 cd backend && python3 main.py
 
-# Terminal 2: Frontend  
+# Manual frontend start
 cd frontend && npm start
-
-# Access at http://localhost:3000
 ```
 
-## Architecture & Key Components
+## Architecture
 
-### Backend Structure
+### Backend (FastAPI)
 
-The backend uses FastAPI with a modular architecture:
+The backend follows a modular architecture with clear separation of concerns:
 
-- **API Routers** (`api/routers/`): REST endpoints for calculations, materials, PDF processing, and multi-agent operations
+- **API Layer** (`api/routers/`): RESTful endpoints organized by domain
+  - `calculations.py`: Generic calculation endpoint supporting all element types
+  - `materials.py`: Material specifications and selection
+  - `pdf_processing.py`: PDF dimension extraction
+  - `agents.py`: Multi-agent system for complex calculations
+  
 - **Core Business Logic** (`core/`):
-  - `calculators/joist_calculator.py`: Implements AS1684-compliant joist calculations
-  - `materials/material_system.py`: Material specifications and selection logic
-  - `agents/`: Multi-agent system for advanced calculations and optimization
-- **PDF Processing** (`pdf_processing/`): PyMuPDF-based drawing analysis with Claude Vision integration
-- **Output Generation** (`output_formats/`): Professional cutting list formatting
+  - `calculators/`: Implements AS1684-compliant calculations
+    - `element_types.py`: Central registry for all structural elements
+    - `calculator_factory.py`: Creates appropriate calculator for each element
+    - `joist_calculator.py`: Reference implementation
+  - `materials/material_system.py`: Material database and selection logic
+  - `agents/`: Multi-agent architecture for complex workflows
 
-### Frontend Structure  
+- **PDF Processing** (`pdf_processing/`): PyMuPDF-based coordinate extraction
 
-React/TypeScript application with:
+### Frontend (React/TypeScript)
 
-- **PDF Viewer** (`components/pdf-viewer/`): Interactive PDF display with area selection
-- **Selection Tools** (`components/selection-tools/`): Drawing measurement extraction
-- **Calculation Interface** (`components/calculation-review/`): Material specifications and results
-- **State Management** (`stores/appStore.ts`): Zustand-based state management
-- **API Client** (`utils/api.ts`): Axios-based backend communication
+- **State Management**: Zustand store (`stores/appStore.ts`)
+- **PDF Interaction**: Interactive viewer with selection tools
+- **API Client**: Axios-based with proper error handling
 
-### Multi-Agent System
+### Element Type System
 
-The project includes an advanced multi-agent architecture:
+The codebase uses a flexible element registry system where each structural element (J1, S1, RX, etc.) is defined with:
+- Calculator type (joist, wall_frame, bearer, etc.)
+- Material specifications
+- Category grouping
+- Active/inactive status
 
-- **Agent Manager** (`core/agents/agent_manager.py`): Orchestrates specialized agents
-- **Project Orchestrator** (`core/agents/project_orchestrator.py`): Coordinates complex workflows
-- **Specialized Agents** (`core/agents/specialized/`): Task-specific calculation agents
-- **Event Bus** (`core/agents/event_bus.py`): Inter-agent communication
+New element types can be added to `element_types.py` without modifying calculator code.
+
+## Key API Endpoints
+
+- `POST /api/calculations/calculate`: Generic calculation for any element type
+- `GET /api/calculations/element-types`: List all available elements
+- `POST /api/pdf/calculate-dimensions`: Convert PDF coordinates to real dimensions
+- `POST /api/agents/calculate`: Multi-agent calculation workflow
+
+## Testing
+
+```bash
+# Backend unit tests
+cd backend && python3 test_basic.py
+
+# Run pytest suite
+python3 -m pytest tests/
+
+# Test specific endpoint
+curl -X POST http://localhost:8000/api/calculations/calculate \
+  -H "Content-Type: application/json" \
+  -d '{"element_code": "J1", "dimensions": {"width": 3.386, "length": 4.872}}'
+```
+
+## Adding New Features
+
+1. **New Element Types**: Add to `element_registry` in `core/calculators/element_types.py`
+2. **New Calculators**: Implement in `core/calculators/`, register in `calculator_factory.py`
+3. **API Endpoints**: Add router in `api/routers/`, include in `main.py`
+4. **Frontend Components**: Add to `components/`, update state in `appStore.ts`
 
 ## Australian Standards Compliance
 
-### Materials (AS1684)
+- **Materials**: AS1684-compliant sizes (150x45, 200x45, 240x45 LVL)
+- **Spacings**: Standard 300mm, 450mm, 600mm centers
+- **Reference System**: Level-Component-Sequence (e.g., L1-J1)
+- **Lengths**: 3.0m to 7.8m in 0.6m increments
 
-- **LVL Sizes**: 150x45, 200x45, 240x45, 200x63 E13 LVL
-- **Treated Pine**: 90x45 H2 MGP10, 70x35 E10 H2  
-- **Standard Lengths**: 3.0m to 7.8m in 0.6m increments
-- **Standard Spacings**: 300mm, 450mm, 600mm centers
+## Critical Notes
 
-### Reference Coding System
-
-- **Levels**: GF (Ground Floor), L1 (Level 1), RF (Roof)
-- **Components**: J (Joists), B (Blocking), ST (Studs), RX (Rafters)
-- **Format**: `{Level}-{Component}{Sequence}` (e.g., L1-J1)
-
-## Development Workflow
-
-### Adding New Features
-
-1. **New Calculators**: Create in `core/calculators/`, follow `joist_calculator.py` pattern
-2. **API Endpoints**: Add to appropriate router in `api/routers/`
-3. **Frontend Components**: Add to `components/`, update `App.tsx`
-4. **State Management**: Update `stores/appStore.ts` as needed
-
-### Testing Requirements
-
-- Always run `python3 test_basic.py` after backend changes
-- Test API endpoints: `curl http://localhost:8000/api/[endpoint]`
-- Verify cutting list format matches client specifications
-- Check calculations against manual verification
-
-### Code Standards
-
-- **Python**: Follow PEP 8, use type hints
-- **TypeScript**: Strict mode enabled, proper interface definitions
-- **API**: RESTful conventions, comprehensive error handling
-- **Logging**: Use `enhanced_logger.py` for all backend logging
-
-## Critical Implementation Notes
-
-1. **Material Selection**: All assumptions must be logged for engineer review
-2. **Calculation Transparency**: Show step-by-step formula application
-3. **PDF Processing**: Handle scale detection and unit conversion
-4. **Error Handling**: Graceful degradation with informative messages
-5. **Performance**: Async operations for PDF processing and calculations
-
-## Current Development Status
-
-- ✅ Core joist calculations with AS1684 compliance
-- ✅ Material system with comprehensive specifications
-- ✅ PDF viewer with interactive selection tools
-- ✅ Multi-agent system architecture
-- ✅ Professional cutting list generation
-- 🔄 Advanced PDF dimension extraction (in progress)
-- 📋 Wall framing and rafter calculators (planned)
-
-## Environment Requirements
-
-### Docker (Recommended)
-- Docker Desktop installed and running
-- 4GB+ RAM allocated to Docker
-- 10GB+ free disk space
-
-### Traditional Setup
-- Python 3.11+ (backend)
-- Node.js 18+ (frontend)
-- PyMuPDF for PDF processing
-- Claude API access for vision analysis (optional)
-
-## Docker Troubleshooting
-
-### Common Issues
-
-1. **Build takes forever**: First build downloads all dependencies (normal - can take 5-10 minutes)
-2. **Port already in use**: Run `./scripts/stop.sh` first or `docker-compose down`
-3. **Permission denied**: Make sure scripts are executable: `chmod +x *.sh`
-4. **M1 Mac issues**: The `docker-compose.override.yml` forces x86 platform if needed
-5. **Backend dies after idle**: This is exactly what Docker solves! Use Docker instead of traditional setup
-
-### Quick Fixes
-
-```bash
-# Reset everything
-make clean
-docker system prune -f
-
-# Rebuild from scratch
-make build
-
-# Check what's running
-docker-compose ps
-docker logs checkmeasure-backend
-docker logs checkmeasure-frontend
-```
+- Material selection assumptions must be logged for engineer review
+- All calculations show step-by-step formula application
+- PDF scale detection uses mathematical calculation, not AI
+- Error handling provides graceful degradation
+- Process monitoring disabled to prevent idle crashes
